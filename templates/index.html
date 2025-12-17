@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EmailHelper - Email Backup & Analysis Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+
+        .alert-2fa {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            animation: pulse 3s infinite;
+        }
+
+        .alert-2fa .alert-heading {
+            color: white;
+            font-weight: bold;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+
+        .progress-bar {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            transition: width 0.3s ease;
+        }
+
+        .email-item {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .email-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-success { background-color: #28a745; }
+        .status-error { background-color: #dc3545; }
+        .status-warning { background-color: #ffc107; }
+        .status-info { background-color: #17a2b8; }
+
+        .analysis-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .analysis-card .card-body {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .email-content {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .stats-number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-light">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="#">
+                <i class="fas fa-envelope text-primary me-2"></i>
+                EmailHelper
+            </a>
+            <div class="navbar-nav ms-auto">
+                <span class="nav-item me-3">
+                    <button class="btn btn-outline-light btn-sm" data-bs-toggle="modal" data-bs-target="#appPasswordModal">
+                        <i class="fas fa-key me-1"></i>
+                        2FA Help
+                    </button>
+                </span>
+                <span class="nav-item">
+                    <span class="badge bg-primary status-badge">
+                        <span class="status-indicator status-info"></span>
+                        Ready
+                    </span>
+                </span>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <!-- Download Section -->
+        <div class="card mb-4 fade-in">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-download me-2"></i>
+                    Email Download
+                </h5>
+            </div>
+            <div class="card-body">
+                <!-- 2FA Warning Alert -->
+                <div class="alert alert-2fa alert-dismissible fade show" role="alert">
+                    <h6 class="alert-heading">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        ⚠️ CRITICAL: 2FA Users Must Read This!
+                    </h6>
+                    <p class="mb-2"><strong>If your Outlook account has 2FA enabled:</strong> You CANNOT use your regular password! You must create an App Password first.</p>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-light btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#appPasswordModal">
+                            <i class="fas fa-external-link-alt me-1"></i>
+                            How to Get App Password
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" onclick="check2FA()">
+                            <i class="fas fa-question-circle me-1"></i>
+                            Do I Have 2FA?
+                        </button>
+                    </div>
+                </div>
+
+                <form id="downloadForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" placeholder="your.email@ufl.edu" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control" id="password" placeholder="Your password or app password" required>
+                            <div class="form-text">
+                                <small class="text-warning">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>
+                                    <strong>If 2FA enabled:</strong> Use an <a href="https://account.microsoft.com/security/app-passwords" target="_blank" class="text-warning">App Password</a> instead
+                                </small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="mailbox" class="form-label">Mailbox</label>
+                            <select class="form-select" id="mailbox">
+                                <option value="INBOX">INBOX</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="outputDir" class="form-label">Output Directory</label>
+                            <input type="text" class="form-control" id="outputDir" value="emails" required>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary me-2" id="startDownload">
+                                <i class="fas fa-play me-1"></i>
+                                Start Download
+                            </button>
+                            <button type="button" class="btn btn-danger" id="stopDownload" disabled>
+                                <i class="fas fa-stop me-1"></i>
+                                Stop
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Progress Bar -->
+                <div class="mt-4" id="progressSection" style="display: none;">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span id="progressText">Preparing download...</span>
+                            <span id="progressPercent">0%</span>
+                        </div>
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                 id="progressBar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="stats-number" id="downloadedCount">0</div>
+                            <small class="text-muted">Downloaded</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stats-number" id="totalCount">0</div>
+                            <small class="text-muted">Total</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stats-number" id="errorCount">0</div>
+                            <small class="text-muted">Errors</small>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stats-number" id="currentEmail">0</div>
+                            <small class="text-muted">Current</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analysis Section -->
+        <div class="card mb-4 fade-in">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Email Analysis
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-4">
+                    <button class="btn btn-success btn-lg" id="analyzeBtn">
+                        <i class="fas fa-search me-2"></i>
+                        Analyze Downloaded Emails
+                    </button>
+                </div>
+
+                <div id="analysisResults" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="analysis-card card text-white mb-3">
+                                <div class="card-body text-center">
+                                    <h3 id="totalEmails">-</h3>
+                                    <p class="mb-0">Total Emails</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="analysis-card card text-white mb-3">
+                                <div class="card-body text-center">
+                                    <h3 id="accountEmails">-</h3>
+                                    <p class="mb-0">Account/Security</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="analysis-card card text-white mb-3">
+                                <div class="card-body text-center">
+                                    <h3 id="financialEmails">-</h3>
+                                    <p class="mb-0">Financial</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Top Senders</h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="topSenders" class="list-group list-group-flush">
+                                        <!-- Senders will be populated here -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Emails by Year</h6>
+                                </div>
+                                <div class="card-body">
+                                    <canvas id="yearChart" width="400" height="200"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Email Viewer Section -->
+        <div class="card fade-in">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-eye me-2"></i>
+                    Email Viewer
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="mb-3">
+                            <input type="text" class="form-control" id="searchInput" placeholder="Search emails...">
+                        </div>
+                        <div id="emailList" class="list-group" style="max-height: 600px; overflow-y: auto;">
+                            <!-- Email list will be populated here -->
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div id="emailViewer" class="email-content" style="display: none;">
+                            <!-- Email content will be shown here -->
+                        </div>
+                        <div id="noEmailSelected" class="text-center text-muted mt-5">
+                            <i class="fas fa-envelope fa-3x mb-3"></i>
+                            <p>Select an email to view its contents</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Password Help Modal -->
+    <div class="modal fade" id="appPasswordModal" tabindex="-1" aria-labelledby="appPasswordModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="appPasswordModalLabel">
+                        <i class="fas fa-key me-2"></i>
+                        How to Create an App Password for Outlook
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-warning">
+                        <strong>Important:</strong> You need an App Password because regular passwords don't work with IMAP when 2FA is enabled.
+                    </div>
+
+                    <h6>Step-by-Step Instructions:</h6>
+                    <ol class="list-group list-group-numbered">
+                        <li class="list-group-item">
+                            <strong>Go to Microsoft Account Security:</strong><br>
+                            Visit: <a href="https://account.microsoft.com/security" target="_blank" class="text-primary">https://account.microsoft.com/security</a>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Sign in</strong> with your Outlook/UFL email and password
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Find "More security options"</strong> under the Security section
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Click "App passwords"</strong> in the left sidebar
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Click "Create a new app password"</strong>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Give it a name</strong> like "EmailHelper Backup"
+                        </li>
+                        <li class="list-group-item bg-light">
+                            <strong>Copy the 16-character password</strong> that Microsoft generates<br>
+                            <small class="text-muted">It will look like: <code>abcd-efgh-ijkl-mnop</code></small>
+                        </li>
+                        <li class="list-group-item">
+                            <strong>Use this app password</strong> in the password field above (not your regular password)
+                        </li>
+                    </ol>
+
+                    <div class="alert alert-info mt-3">
+                        <h6><i class="fas fa-lightbulb me-2"></i>Troubleshooting:</h6>
+                        <ul class="mb-0">
+                            <li>App passwords are single-use - create a new one if it doesn't work</li>
+                            <li>Make sure you're using the generated password, not your regular one</li>
+                            <li>If you don't see "App passwords", your account might not have 2FA enabled</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="window.open('https://account.microsoft.com/security/app-passwords', '_blank')">
+                        <i class="fas fa-external-link-alt me-1"></i>
+                        Open Microsoft Account
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Check 2FA Modal -->
+    <div class="modal fade" id="check2FAModal" tabindex="-1" aria-labelledby="check2FAModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="check2FAModalLabel">
+                        <i class="fas fa-question-circle me-2"></i>
+                        Do I Have 2FA Enabled?
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h6>Quick Test:</h6>
+                    <ol>
+                        <li>Visit: <a href="https://account.microsoft.com/security" target="_blank" class="text-primary">https://account.microsoft.com/security</a></li>
+                        <li>Sign in with your Outlook/UFL email</li>
+                        <li><strong>If it asks for a verification code</strong> → You have 2FA → Need App Password</li>
+                        <li><strong>If it lets you sign in directly</strong> → No 2FA → Use regular password</li>
+                    </ol>
+
+                    <div class="alert alert-success">
+                        <strong>✅ No 2FA:</strong> Use your regular Outlook password in EmailHelper
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <strong>⚠️ Has 2FA:</strong> Must create App Password (see instructions above)
+                    </div>
+
+                    <p class="text-muted mt-3">
+                        <small>Most university and corporate Outlook accounts have 2FA enabled for security.</small>
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" onclick="window.open('https://account.microsoft.com/security', '_blank')">
+                        <i class="fas fa-external-link-alt me-1"></i>
+                        Test My Account
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+        <div id="statusMessages"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        const socket = io();
+        let currentEmails = [];
+        let yearChart = null;
+
+        // Socket.IO event handlers
+        socket.on('connect', function() {
+            console.log('Connected to server');
+        });
+
+        socket.on('status_update', function(data) {
+            showStatusMessage(data.message, 'info');
+            updateStatusBadge('Ready', 'info');
+        });
+
+        socket.on('error', function(data) {
+            showStatusMessage(data.message, 'danger');
+            updateStatusBadge('Error', 'danger');
+
+            // Check for common 2FA/login errors and show helpful message
+            if (data.message.includes('authentication') ||
+                data.message.includes('password') ||
+                data.message.includes('login') ||
+                data.message.includes('credentials')) {
+                setTimeout(() => {
+                    showStatusMessage(
+                        '💡 <strong>2FA Issue?</strong> If you have 2FA enabled, you need an <a href="https://account.microsoft.com/security/app-passwords" target="_blank" class="alert-link">App Password</a> instead of your regular password.',
+                        'warning'
+                    );
+                }, 2000);
+            }
+        });
+
+        socket.on('mailboxes_found', function(data) {
+            const mailboxSelect = document.getElementById('mailbox');
+            mailboxSelect.innerHTML = '';
+            data.mailboxes.forEach(mailbox => {
+                const option = document.createElement('option');
+                option.value = mailbox.split('"')[3]; // Extract mailbox name
+                option.textContent = mailbox.split('"')[3];
+                mailboxSelect.appendChild(option);
+            });
+        });
+
+        socket.on('mailbox_selected', function(data) {
+            document.getElementById('totalCount').textContent = data.total_emails;
+            document.getElementById('progressSection').style.display = 'block';
+        });
+
+        socket.on('download_started', function(data) {
+            document.getElementById('startDownload').disabled = true;
+            document.getElementById('stopDownload').disabled = false;
+            updateStatusBadge('Downloading', 'warning');
+        });
+
+        socket.on('progress_update', function(data) {
+            document.getElementById('progressBar').style.width = data.progress + '%';
+            document.getElementById('progressPercent').textContent = Math.round(data.progress) + '%';
+            document.getElementById('progressText').textContent = data.status_message;
+            document.getElementById('downloadedCount').textContent = data.downloaded;
+            document.getElementById('errorCount').textContent = data.errors;
+            document.getElementById('currentEmail').textContent = data.current_email;
+        });
+
+        socket.on('download_complete', function(data) {
+            document.getElementById('startDownload').disabled = false;
+            document.getElementById('stopDownload').disabled = true;
+            updateStatusBadge('Complete', 'success');
+            showStatusMessage('Download complete! Click "Analyze Downloaded Emails" to continue.', 'success');
+            loadEmails();
+        });
+
+        socket.on('download_cancelled', function() {
+            document.getElementById('startDownload').disabled = false;
+            document.getElementById('stopDownload').disabled = true;
+            updateStatusBadge('Cancelled', 'warning');
+        });
+
+        socket.on('download_stopped', function() {
+            document.getElementById('startDownload').disabled = false;
+            document.getElementById('stopDownload').disabled = true;
+            updateStatusBadge('Stopped', 'warning');
+        });
+
+        // Form handlers
+        document.getElementById('downloadForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const mailbox = document.getElementById('mailbox').value;
+            const outputDir = document.getElementById('outputDir').value;
+
+            socket.emit('start_download', {
+                email: email,
+                password: password,
+                mailbox: mailbox,
+                output_dir: outputDir
+            });
+        });
+
+        document.getElementById('stopDownload').addEventListener('click', function() {
+            socket.emit('stop_download');
+        });
+
+        document.getElementById('analyzeBtn').addEventListener('click', function() {
+            analyzeEmails();
+        });
+
+        // Functions
+        function showStatusMessage(message, type) {
+            const messagesDiv = document.getElementById('statusMessages');
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            messagesDiv.appendChild(alertDiv);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                if (alertDiv.parentNode) {
+                    alertDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function updateStatusBadge(text, type) {
+            const badge = document.querySelector('.status-badge');
+            badge.innerHTML = `<span class="status-indicator status-${type}"></span>${text}`;
+        }
+
+        function loadEmails() {
+            fetch('/api/emails')
+                .then(response => response.json())
+                .then(data => {
+                    currentEmails = data.emails;
+                    displayEmails(data.emails);
+                })
+                .catch(error => {
+                    console.error('Error loading emails:', error);
+                    showStatusMessage('Error loading emails', 'danger');
+                });
+        }
+
+        function displayEmails(emails) {
+            const emailList = document.getElementById('emailList');
+            emailList.innerHTML = '';
+
+            if (emails.length === 0) {
+                emailList.innerHTML = '<div class="text-center text-muted mt-3">No emails found</div>';
+                return;
+            }
+
+            emails.forEach(email => {
+                const item = document.createElement('a');
+                item.href = '#';
+                item.className = 'list-group-item list-group-item-action email-item';
+                item.innerHTML = `
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">${email.subject}</h6>
+                        <small>${email.date}</small>
+                    </div>
+                    <p class="mb-1">${email.sender}</p>
+                    <small class="text-muted">${email.body_preview}</small>
+                `;
+                item.addEventListener('click', () => loadEmailContent(email.filename));
+                emailList.appendChild(item);
+            });
+        }
+
+        function loadEmailContent(filename) {
+            fetch(`/api/email/${filename}`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('emailViewer').innerHTML = `<pre>${data.content}</pre>`;
+                    document.getElementById('emailViewer').style.display = 'block';
+                    document.getElementById('noEmailSelected').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error loading email:', error);
+                    showStatusMessage('Error loading email content', 'danger');
+                });
+        }
+
+        function analyzeEmails() {
+            document.getElementById('analyzeBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
+            document.getElementById('analyzeBtn').disabled = true;
+
+            fetch('/api/analyze')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        showStatusMessage(data.error, 'danger');
+                        return;
+                    }
+
+                    displayAnalysis(data);
+                    document.getElementById('analysisResults').style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error analyzing emails:', error);
+                    showStatusMessage('Error analyzing emails', 'danger');
+                })
+                .finally(() => {
+                    document.getElementById('analyzeBtn').innerHTML = '<i class="fas fa-search me-2"></i>Analyze Downloaded Emails';
+                    document.getElementById('analyzeBtn').disabled = false;
+                });
+        }
+
+        function displayAnalysis(data) {
+            document.getElementById('totalEmails').textContent = data.total_emails;
+            document.getElementById('accountEmails').textContent = data.important_categories.account_security;
+            document.getElementById('financialEmails').textContent = data.important_categories.financial;
+
+            // Top senders
+            const topSendersDiv = document.getElementById('topSenders');
+            topSendersDiv.innerHTML = '';
+            Object.entries(data.top_senders || {}).slice(0, 10).forEach(([sender, count]) => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex justify-content-between align-items-center';
+                item.innerHTML = `
+                    ${sender}
+                    <span class="badge bg-primary rounded-pill">${count}</span>
+                `;
+                topSendersDiv.appendChild(item);
+            });
+
+            // Year chart
+            if (yearChart) {
+                yearChart.destroy();
+            }
+
+            const ctx = document.getElementById('yearChart').getContext('2d');
+            yearChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(data.emails_by_year || {}),
+                    datasets: [{
+                        label: 'Emails',
+                        data: Object.values(data.emails_by_year || {}),
+                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                        borderColor: 'rgba(102, 126, 234, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Search functionality
+        document.getElementById('searchInput').addEventListener('input', function() {
+            const query = this.value.toLowerCase();
+            const filteredEmails = currentEmails.filter(email =>
+                email.subject.toLowerCase().includes(query) ||
+                email.sender.toLowerCase().includes(query) ||
+                email.body_preview.toLowerCase().includes(query)
+            );
+            displayEmails(filteredEmails);
+        });
+
+        // Check if user has 2FA
+        function check2FA() {
+            const modal = new bootstrap.Modal(document.getElementById('check2FAModal'));
+            modal.show();
+        }
+
+        // Load emails on page load
+        loadEmails();
+    </script>
+</body>
+</html>
