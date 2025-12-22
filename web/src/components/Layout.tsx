@@ -1,7 +1,8 @@
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2, Archive, Trash2, Star } from 'lucide-react';
+import { Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2, Archive, Trash2, Star, BarChart3, RefreshCw, Newspaper, Paperclip, Shield } from 'lucide-react';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
+import { ThemeToggle } from './ThemeToggle';
 import jkLogo from '../assets/jk-logo.svg';
 
 const navItems = [
@@ -13,8 +14,13 @@ const navItems = [
   { to: '/senders', icon: Building2, label: 'Senders' },
   { to: '/accounts', icon: UserCheck, label: 'Accounts' },
   { to: '/purchases', icon: ShoppingBag, label: 'Purchases' },
+  { to: '/subscriptions', icon: RefreshCw, label: 'Subscriptions' },
+  { to: '/newsletters', icon: Newspaper, label: 'Newsletters' },
+  { to: '/attachments', icon: Paperclip, label: 'Attachments' },
   { to: '/contacts', icon: Users, label: 'Contacts' },
   { to: '/calendar', icon: Calendar, label: 'Calendar' },
+  { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+  { to: '/backup', icon: Shield, label: 'Backup' },
   { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
@@ -100,15 +106,18 @@ export function Layout() {
         </nav>
 
         <div className="p-4 border-t border-slate-200 dark:border-slate-700">
-          <a 
-            href="https://jacobkanfer.com" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-3 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-          >
-            <img src={jkLogo} alt="JK" className="w-8 h-8" />
-            <span>Built by <span className="hover:underline">Jacob Kanfer</span></span>
-          </a>
+          <div className="flex items-center justify-between mb-3">
+            <ThemeToggle variant="icon" />
+            <a 
+              href="https://jacobkanfer.com" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+            >
+              <img src={jkLogo} alt="JK" className="w-6 h-6" />
+              <span>Jacob Kanfer</span>
+            </a>
+          </div>
         </div>
       </aside>
 

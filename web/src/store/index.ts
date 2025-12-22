@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Email, Account, Purchase, Contact, CalendarEvent, Folder } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
 import {
   getEmails,
@@ -8,6 +8,8 @@ import {
   getContacts,
   getCalendarEvents,
   getFolders,
+  getSubscriptions,
+  getNewsletters,
   clearAllData as clearDB,
   updateEmailStar,
   updateEmailRead,
@@ -33,6 +35,8 @@ interface AppState {
   contacts: Contact[];
   calendarEvents: CalendarEvent[];
   folders: Folder[];
+  subscriptions: Subscription[];
+  newsletters: Newsletter[];
   
   // Loading states
   isLoading: boolean;
@@ -49,6 +53,8 @@ interface AppState {
   refreshContacts: () => Promise<void>;
   refreshCalendarEvents: () => Promise<void>;
   refreshFolders: () => Promise<void>;
+  refreshSubscriptions: () => Promise<void>;
+  refreshNewsletters: () => Promise<void>;
   refreshAll: () => Promise<void>;
   clearAll: () => Promise<void>;
   
@@ -95,6 +101,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   contacts: [],
   calendarEvents: [],
   folders: [],
+  subscriptions: [],
+  newsletters: [],
   isLoading: false,
   isInitialized: false,
   totalEmailCount: 0,
@@ -110,13 +118,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Initialize system folders first
       await initializeSystemFolders();
       
-      const [emails, accounts, purchases, contacts, calendarEvents, folders] = await Promise.all([
+      const [emails, accounts, purchases, contacts, calendarEvents, folders, subscriptions, newsletters] = await Promise.all([
         getEmails(),
         getAccounts(),
         getPurchases(),
         getContacts(),
         getCalendarEvents(),
         getFolders(),
+        getSubscriptions(),
+        getNewsletters(),
       ]);
       
       set({
@@ -126,6 +136,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         contacts,
         calendarEvents,
         folders,
+        subscriptions,
+        newsletters,
         totalEmailCount: emails.length,
         isInitialized: true,
         isLoading: false,
@@ -191,18 +203,38 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
+  refreshSubscriptions: async () => {
+    try {
+      const subscriptions = await getSubscriptions();
+      set({ subscriptions });
+    } catch (error) {
+      console.error('Failed to refresh subscriptions:', error);
+    }
+  },
+  
+  refreshNewsletters: async () => {
+    try {
+      const newsletters = await getNewsletters();
+      set({ newsletters });
+    } catch (error) {
+      console.error('Failed to refresh newsletters:', error);
+    }
+  },
+  
   // Refresh all data
   refreshAll: async () => {
     set({ isLoading: true });
     
     try {
-      const [emails, accounts, purchases, contacts, calendarEvents, folders] = await Promise.all([
+      const [emails, accounts, purchases, contacts, calendarEvents, folders, subscriptions, newsletters] = await Promise.all([
         getEmails(),
         getAccounts(),
         getPurchases(),
         getContacts(),
         getCalendarEvents(),
         getFolders(),
+        getSubscriptions(),
+        getNewsletters(),
       ]);
       
       set({
@@ -212,6 +244,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         contacts,
         calendarEvents,
         folders,
+        subscriptions,
+        newsletters,
         totalEmailCount: emails.length,
         isLoading: false,
       });
@@ -234,6 +268,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         contacts: [],
         calendarEvents: [],
         folders,
+        subscriptions: [],
+        newsletters: [],
         totalEmailCount: 0,
         isInitialized: true, // Keep initialized but empty
       });

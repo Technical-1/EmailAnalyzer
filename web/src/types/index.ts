@@ -104,6 +104,8 @@ export interface OLMProcessingResult {
   calendarEvents: number;
   accounts: number;
   purchases: number;
+  subscriptions: number;
+  newsletters: number;
 }
 
 export interface OLMProcessingProgress {
@@ -121,7 +123,78 @@ export interface DetectionResult {
     serviceType?: string;
     merchant?: string;
     amount?: number;
+    currency?: string;
     orderNumber?: string;
   };
+}
+
+// Email Thread types
+export interface EmailThread {
+  id: string;
+  subject: string; // Normalized subject
+  emails: Email[];
+  participants: string[];
+  lastMessageDate: Date;
+  firstMessageDate: Date;
+  messageCount: number;
+  unreadCount: number;
+  hasAttachments: boolean;
+  isStarred: boolean; // True if any email in thread is starred
+}
+
+// Saved Search types
+export interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  createdAt: Date;
+  lastUsed?: Date;
+}
+
+// Subscription types (for Phase 4)
+export interface Subscription {
+  id?: number;
+  serviceName: string;
+  monthlyAmount: number;
+  currency: string;
+  frequency: 'weekly' | 'monthly' | 'yearly';
+  lastRenewalDate: Date;
+  nextRenewalDate?: Date;
+  emailIds: number[];
+  isActive: boolean;
+  category: 'streaming' | 'software' | 'news' | 'fitness' | 'other';
+}
+
+// Newsletter types (for Phase 4)
+export interface Newsletter {
+  id?: number;
+  senderEmail: string;
+  senderName: string;
+  emailCount: number;
+  lastEmailDate: Date;
+  unsubscribeLink?: string;
+  isPromotional: boolean;
+}
+
+// Custom Rule types (for Phase 3)
+export interface CustomRule {
+  id: string;
+  name: string;
+  conditions: RuleCondition[];
+  actions: RuleAction[];
+  isActive: boolean;
+  createdAt: Date;
+}
+
+export interface RuleCondition {
+  field: 'sender' | 'subject' | 'body' | 'recipient';
+  operator: 'contains' | 'equals' | 'startsWith' | 'endsWith' | 'regex';
+  value: string;
+  caseSensitive: boolean;
+}
+
+export interface RuleAction {
+  type: 'tag' | 'move' | 'star' | 'markRead';
+  value?: string;
 }
 

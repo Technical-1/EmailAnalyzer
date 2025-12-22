@@ -11,6 +11,13 @@ import { CalendarPage } from './pages/CalendarPage';
 import { SendersPage } from './pages/SendersPage';
 import { SenderEmailsPage } from './pages/SenderEmailsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { SubscriptionsPage } from './pages/SubscriptionsPage';
+import { NewslettersPage } from './pages/NewslettersPage';
+import { AttachmentsPage } from './pages/AttachmentsPage';
+import { BackupPage } from './pages/BackupPage';
+import { DndProvider } from './components/DndProvider';
+import { UndoToastContainer } from './components/UndoToast';
 import { useAppStore } from './store';
 
 function AppContent() {
@@ -43,6 +50,11 @@ function AppContent() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="senders" element={<SendersPage />} />
         <Route path="sender/:senderKey" element={<SenderEmailsPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="subscriptions" element={<SubscriptionsPage />} />
+        <Route path="newsletters" element={<NewslettersPage />} />
+        <Route path="attachments" element={<AttachmentsPage />} />
+        <Route path="backup" element={<BackupPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
@@ -52,7 +64,10 @@ function AppContent() {
 function App() {
   return (
     <BrowserRouter>
-      <AppContent />
+      <DndProvider>
+        <AppContent />
+        <UndoToastContainer />
+      </DndProvider>
     </BrowserRouter>
   );
 }

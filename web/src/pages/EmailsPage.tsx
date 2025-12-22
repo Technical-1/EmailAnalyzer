@@ -1,17 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star } from 'lucide-react';
+import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star, Zap, MessageSquare, List } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
+import { VirtualEmailList } from '../components/VirtualEmailList';
+import { ThreadView } from '../components/ThreadView';
 import { useAppStore } from '../store';
-import { SYSTEM_FOLDERS } from '../types';
+import { threadingService } from '../services/threadingService';
+import { SYSTEM_FOLDERS, type Email } from '../types';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
 type SortField = 'date' | 'sender' | 'subject';
 type SortOrder = 'asc' | 'desc';
+type ViewMode = 'paginated' | 'virtual';
+type ListMode = 'emails' | 'threads';
 
 const EMAILS_PER_PAGE = 50;
+const VIRTUAL_SCROLL_THRESHOLD = 100; // Use virtual scrolling when more than 100 emails
 
 // Wrapper component to reset state on folder change
 function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
@@ -22,6 +28,8 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
+  const [viewMode, setViewMode] = useState<ViewMode>('paginated');
+  const [listMode, setListMode] = useState<ListMode>('emails');
 
   // Special handling for favorites (starred emails across all folders)
   const isFavorites = folderParam === 'favorites';
@@ -96,6 +104,12 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
     return result;
   }, [emails, currentFolder, isFavorites, filter, searchQuery, sortField, sortOrder]);
 
+  // Build threads from processed emails
+  const threads = useMemo(() => {
+    if (listMode !== 'threads') return [];
+    return threadingService.buildThreads(processedEmails);
+  }, [processedEmails, listMode]);
+
   const folderEmailCount = isFavorites 
     ? emails.filter(e => e.isStarred).length 
     : emails.filter(e => e.folderId === currentFolder).length;
@@ -149,6 +163,15 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
     { value: 'sender', label: 'Sender' },
     { value: 'subject', label: 'Subject' },
   ];
+
+  // Determine if virtual scrolling should be used
+  const shouldUseVirtualScroll = viewMode === 'virtual' || processedEmails.length > VIRTUAL_SCROLL_THRESHOLD;
+  const useVirtual = viewMode === 'virtual' && processedEmails.length > 0;
+
+  // Callback for email click in virtual list
+  const handleEmailClick = useCallback((email: Email) => {
+    navigate(`/emails/${email.id}`);
+  }, [navigate]);
 
   return (
     <div>
@@ -229,99 +252,181 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
         })}
       </div>
 
-      {/* Sort Options */}
-      <div className="flex items-center gap-2 mb-6">
-        <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1">
-          <ArrowUpDown className="w-4 h-4" />
-          Sort by:
-        </span>
-        {sortOptions.map(option => (
-          <button
-            key={option.value}
-            onClick={() => handleSortChange(option.value)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 transition-colors ${
-              sortField === option.value
-                ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            {option.label}
-            {sortField === option.value && (
-              sortOrder === 'desc' ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />
-            )}
-          </button>
-        ))}
+      {/* Sort Options and View Mode */}
+      <div className="flex items-center justify-between gap-2 mb-6">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <ArrowUpDown className="w-4 h-4" />
+            Sort by:
+          </span>
+          {sortOptions.map(option => (
+            <button
+              key={option.value}
+              onClick={() => handleSortChange(option.value)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 transition-colors ${
+                sortField === option.value
+                  ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              {option.label}
+              {sortField === option.value && (
+                sortOrder === 'desc' ? <SortDesc className="w-3 h-3" /> : <SortAsc className="w-3 h-3" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* List Mode Toggle */}
+          <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setListMode('emails')}
+              className={`px-3 py-1.5 text-sm font-medium flex items-center gap-1 transition-colors ${
+                listMode === 'emails'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title="Show individual emails"
+            >
+              <List className="w-3 h-3" />
+              Emails
+            </button>
+            <button
+              onClick={() => setListMode('threads')}
+              className={`px-3 py-1.5 text-sm font-medium flex items-center gap-1 transition-colors ${
+                listMode === 'threads'
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+              title="Group emails into conversations"
+            >
+              <MessageSquare className="w-3 h-3" />
+              Threads
+            </button>
+          </div>
+
+          {/* View Mode Toggle */}
+          {listMode === 'emails' && processedEmails.length > VIRTUAL_SCROLL_THRESHOLD && (
+            <button
+              onClick={() => setViewMode(viewMode === 'paginated' ? 'virtual' : 'paginated')}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 transition-colors ${
+                viewMode === 'virtual'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title={viewMode === 'virtual' ? 'Using virtual scrolling for performance' : 'Switch to virtual scrolling'}
+            >
+              <Zap className="w-3 h-3" />
+              {viewMode === 'virtual' ? 'Virtual Scroll' : 'Paginated'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Email List */}
-      {paginatedEmails.length > 0 ? (
-        <>
-          <div className="space-y-3">
-            {paginatedEmails.map(email => (
-              <EmailCard
-                key={email.id}
-                email={email}
-                onClick={() => navigate(`/emails/${email.id}`)}
-              />
-            ))}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Showing {((currentPage - 1) * EMAILS_PER_PAGE) + 1} - {Math.min(currentPage * EMAILS_PER_PAGE, processedEmails.length)} of {processedEmails.length}
-              </p>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                
-                <div className="flex items-center gap-1">
-                  {/* Show page numbers */}
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let pageNum: number;
-                    if (totalPages <= 5) {
-                      pageNum = i + 1;
-                    } else if (currentPage <= 3) {
-                      pageNum = i + 1;
-                    } else if (currentPage >= totalPages - 2) {
-                      pageNum = totalPages - 4 + i;
-                    } else {
-                      pageNum = currentPage - 2 + i;
-                    }
-                    
-                    return (
-                      <button
-                        key={pageNum}
-                        onClick={() => setCurrentPage(pageNum)}
-                        className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
-                          currentPage === pageNum
-                            ? 'bg-blue-500 text-white'
-                            : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
-                        }`}
-                      >
-                        {pageNum}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </div>
+      {processedEmails.length > 0 ? (
+        listMode === 'threads' ? (
+          // Thread View Mode
+          <>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+              <MessageSquare className="w-3 h-3 text-blue-500" />
+              {threads.length} conversations from {processedEmails.length} emails
             </div>
-          )}
-        </>
+            <div className="space-y-3">
+              {threads.map(thread => (
+                <ThreadView
+                  key={thread.id}
+                  thread={thread}
+                  onEmailClick={handleEmailClick}
+                />
+              ))}
+            </div>
+          </>
+        ) : useVirtual ? (
+          // Virtual Scrolling Mode
+          <>
+            <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+              <Zap className="w-3 h-3 text-green-500" />
+              Virtual scrolling enabled for {processedEmails.length} emails
+            </div>
+            <VirtualEmailList
+              emails={processedEmails}
+              onEmailClick={handleEmailClick}
+              estimateSize={100}
+              overscan={5}
+            />
+          </>
+        ) : (
+          // Paginated Mode
+          <>
+            <div className="space-y-3">
+              {paginatedEmails.map(email => (
+                <EmailCard
+                  key={email.id}
+                  email={email}
+                  onClick={() => navigate(`/emails/${email.id}`)}
+                />
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Showing {((currentPage - 1) * EMAILS_PER_PAGE) + 1} - {Math.min(currentPage * EMAILS_PER_PAGE, processedEmails.length)} of {processedEmails.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  
+                  <div className="flex items-center gap-1">
+                    {/* Show page numbers */}
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum: number;
+                      if (totalPages <= 5) {
+                        pageNum = i + 1;
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1;
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i;
+                      } else {
+                        pageNum = currentPage - 2 + i;
+                      }
+                      
+                      return (
+                        <button
+                          key={pageNum}
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
+                            currentPage === pageNum
+                              ? 'bg-blue-500 text-white'
+                              : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )
       ) : emails.length === 0 ? (
         <EmptyState
           icon={Mail}

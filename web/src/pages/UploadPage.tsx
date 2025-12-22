@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, Mail, Users, Calendar, ShoppingBag, UserCheck } from 'lucide-react';
+import { CheckCircle, Mail, Users, Calendar, ShoppingBag, UserCheck, RefreshCw, Newspaper } from 'lucide-react';
 import { FileDropzone } from '../components/FileDropzone';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatsCard } from '../components/StatsCard';
-import { olmParser, type ProgressCallback } from '../services/olmParser';
+import { workerOlmParser, type ProgressCallback } from '../services/workerOlmParser';
 import { useAppStore } from '../store';
 import type { OLMProcessingProgress, OLMProcessingResult } from '../types';
 
@@ -26,7 +26,7 @@ export function UploadPage() {
         setProgress(p);
       };
 
-      const processingResult = await olmParser.parseOLMFile(file, progressCallback);
+      const processingResult = await workerOlmParser.parseOLMFile(file, progressCallback);
       setResult(processingResult);
       
       // Refresh the store with new data
@@ -70,7 +70,7 @@ export function UploadPage() {
             <span className="text-xl font-semibold">Processing Complete!</span>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
             <StatsCard
               title="Emails"
               value={result.emails}
@@ -88,6 +88,18 @@ export function UploadPage() {
               value={result.purchases}
               icon={ShoppingBag}
               iconColor="text-green-500"
+            />
+            <StatsCard
+              title="Subscriptions"
+              value={result.subscriptions}
+              icon={RefreshCw}
+              iconColor="text-cyan-500"
+            />
+            <StatsCard
+              title="Newsletters"
+              value={result.newsletters}
+              icon={Newspaper}
+              iconColor="text-amber-500"
             />
             <StatsCard
               title="Contacts"

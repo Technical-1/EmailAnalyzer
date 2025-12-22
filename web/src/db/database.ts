@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Email, Account, Purchase, Contact, CalendarEvent, Folder } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
 
 // Database email type (with id required)
 interface DBEmail extends Omit<Email, 'date'> {
@@ -33,6 +33,17 @@ interface DBFolder extends Omit<Folder, 'createdAt'> {
   createdAt: number;
 }
 
+interface DBSubscription extends Omit<Subscription, 'lastRenewalDate' | 'nextRenewalDate'> {
+  id: number;
+  lastRenewalDate: number;
+  nextRenewalDate?: number;
+}
+
+interface DBNewsletter extends Omit<Newsletter, 'lastEmailDate'> {
+  id: number;
+  lastEmailDate: number;
+}
+
 // Database class
 class EmailAnalyzerDB extends Dexie {
   emails!: EntityTable<DBEmail, 'id'>;
@@ -41,6 +52,8 @@ class EmailAnalyzerDB extends Dexie {
   contacts!: EntityTable<DBContact, 'id'>;
   calendarEvents!: EntityTable<DBCalendarEvent, 'id'>;
   folders!: EntityTable<DBFolder, 'id'>;
+  subscriptions!: EntityTable<DBSubscription, 'id'>;
+  newsletters!: EntityTable<DBNewsletter, 'id'>;
 
   constructor() {
     super('EmailAnalyzerDB');
@@ -61,6 +74,28 @@ class EmailAnalyzerDB extends Dexie {
       contacts: '++id, name, email, emailCount',
       calendarEvents: '++id, title, startDate, endDate, isAllDay',
       folders: 'id, name, isSystem, createdAt',
+    });
+
+    // Version 3 adds composite indexes for performance
+    this.version(3).stores({
+      emails: '++id, sender, date, [folderId+date], [emailType+date], [sender+date], threadId, isRead, isStarred',
+      accounts: '++id, serviceName, serviceType, domain, signupDate',
+      purchases: '++id, merchant, amount, purchaseDate, category, [merchant+purchaseDate]',
+      contacts: '++id, name, email, emailCount, lastEmailDate',
+      calendarEvents: '++id, title, startDate, endDate, isAllDay, [startDate+endDate]',
+      folders: 'id, name, isSystem, createdAt',
+    });
+
+    // Version 4 adds subscriptions and newsletters tables
+    this.version(4).stores({
+      emails: '++id, sender, date, [folderId+date], [emailType+date], [sender+date], threadId, isRead, isStarred',
+      accounts: '++id, serviceName, serviceType, domain, signupDate',
+      purchases: '++id, merchant, amount, purchaseDate, category, [merchant+purchaseDate]',
+      contacts: '++id, name, email, emailCount, lastEmailDate',
+      calendarEvents: '++id, title, startDate, endDate, isAllDay, [startDate+endDate]',
+      folders: 'id, name, isSystem, createdAt',
+      subscriptions: '++id, serviceName, category, isActive, lastRenewalDate',
+      newsletters: '++id, senderEmail, isPromotional, lastEmailDate',
     });
   }
 }
@@ -111,6 +146,53 @@ const dbEmailToEmail = (dbEmail: DBEmail): Email => ({
   ...dbEmail,
   date: new Date(dbEmail.date),
 });
+
+// Bulk insert emails for performance
+export const bulkInsertEmails = async (emails: Omit<Email, 'id'>[]): Promise<number[]> => {
+  const dbEmails = emails.map(email => ({
+    ...email,
+    date: email.date.getTime(),
+  })) as DBEmail[];
+  
+  return await db.emails.bulkAdd(dbEmails, { allKeys: true }) as number[];
+};
+
+// Get emails by folder with pagination (lazy loading)
+export const getEmailsByFolderPaginated = async (
+  folderId: string,
+  offset: number,
+  limit: number
+): Promise<Email[]> => {
+  const dbEmails = await db.emails
+    .where('[folderId+date]')
+    .between([folderId, Dexie.minKey], [folderId, Dexie.maxKey])
+    .reverse()
+    .offset(offset)
+    .limit(limit)
+    .toArray();
+  return dbEmails.map(dbEmailToEmail);
+};
+
+// Get email count by folder
+export const getEmailCountByFolder = async (folderId: string): Promise<number> => {
+  return await db.emails.where('folderId').equals(folderId).count();
+};
+
+// Get email headers only (for lazy loading - body loaded on demand)
+export const getEmailHeaders = async (): Promise<Omit<Email, 'body' | 'htmlBody'>[]> => {
+  const dbEmails = await db.emails.orderBy('date').reverse().toArray();
+  return dbEmails.map(dbEmail => {
+    const { body, htmlBody, ...rest } = dbEmailToEmail(dbEmail);
+    return rest as Omit<Email, 'body' | 'htmlBody'>;
+  });
+};
+
+// Get email body by ID (for lazy loading)
+export const getEmailBody = async (id: number): Promise<{ body: string; htmlBody?: string } | undefined> => {
+  const dbEmail = await db.emails.get(id);
+  if (!dbEmail) return undefined;
+  return { body: dbEmail.body, htmlBody: dbEmail.htmlBody };
+};
 
 // ==================== ACCOUNT OPERATIONS ====================
 
@@ -229,6 +311,16 @@ const dbContactToContact = (dbContact: DBContact): Contact => ({
   lastEmailDate: new Date(dbContact.lastEmailDate),
 });
 
+// Bulk insert contacts for performance
+export const bulkInsertContacts = async (contacts: Omit<Contact, 'id'>[]): Promise<number[]> => {
+  const dbContacts = contacts.map(contact => ({
+    ...contact,
+    lastEmailDate: contact.lastEmailDate.getTime(),
+  })) as DBContact[];
+  
+  return await db.contacts.bulkAdd(dbContacts, { allKeys: true }) as number[];
+};
+
 // ==================== CALENDAR EVENT OPERATIONS ====================
 
 export const insertCalendarEvent = async (event: Omit<CalendarEvent, 'id'>): Promise<number> => {
@@ -261,6 +353,17 @@ const dbEventToEvent = (dbEvent: DBCalendarEvent): CalendarEvent => ({
   startDate: new Date(dbEvent.startDate),
   endDate: new Date(dbEvent.endDate),
 });
+
+// Bulk insert calendar events for performance
+export const bulkInsertCalendarEvents = async (events: Omit<CalendarEvent, 'id'>[]): Promise<number[]> => {
+  const dbEvents = events.map(event => ({
+    ...event,
+    startDate: event.startDate.getTime(),
+    endDate: event.endDate.getTime(),
+  })) as DBCalendarEvent[];
+  
+  return await db.calendarEvents.bulkAdd(dbEvents, { allKeys: true }) as number[];
+};
 
 // ==================== FOLDER OPERATIONS ====================
 
@@ -309,6 +412,78 @@ export const initializeSystemFolders = async (): Promise<void> => {
   }
 };
 
+// ==================== SUBSCRIPTION OPERATIONS ====================
+
+export const insertSubscription = async (subscription: Omit<Subscription, 'id'>): Promise<number> => {
+  return await db.subscriptions.add({
+    ...subscription,
+    lastRenewalDate: subscription.lastRenewalDate.getTime(),
+    nextRenewalDate: subscription.nextRenewalDate?.getTime(),
+  } as DBSubscription);
+};
+
+export const getSubscriptions = async (): Promise<Subscription[]> => {
+  const dbSubscriptions = await db.subscriptions.orderBy('serviceName').toArray();
+  return dbSubscriptions.map(dbSubscriptionToSubscription);
+};
+
+export const getSubscriptionByServiceName = async (serviceName: string): Promise<Subscription | undefined> => {
+  const dbSubscription = await db.subscriptions.where('serviceName').equals(serviceName).first();
+  return dbSubscription ? dbSubscriptionToSubscription(dbSubscription) : undefined;
+};
+
+export const updateSubscription = async (
+  id: number,
+  updates: Partial<Pick<Subscription, 'isActive' | 'emailIds' | 'monthlyAmount' | 'lastRenewalDate'>>
+): Promise<void> => {
+  const updateData: Record<string, unknown> = { ...updates };
+  if (updates.lastRenewalDate) {
+    updateData.lastRenewalDate = updates.lastRenewalDate.getTime();
+  }
+  await db.subscriptions.update(id, updateData);
+};
+
+const dbSubscriptionToSubscription = (dbSub: DBSubscription): Subscription => ({
+  ...dbSub,
+  lastRenewalDate: new Date(dbSub.lastRenewalDate),
+  nextRenewalDate: dbSub.nextRenewalDate ? new Date(dbSub.nextRenewalDate) : undefined,
+});
+
+// ==================== NEWSLETTER OPERATIONS ====================
+
+export const insertNewsletter = async (newsletter: Omit<Newsletter, 'id'>): Promise<number> => {
+  return await db.newsletters.add({
+    ...newsletter,
+    lastEmailDate: newsletter.lastEmailDate.getTime(),
+  } as DBNewsletter);
+};
+
+export const getNewsletters = async (): Promise<Newsletter[]> => {
+  const dbNewsletters = await db.newsletters.orderBy('senderEmail').toArray();
+  return dbNewsletters.map(dbNewsletterToNewsletter);
+};
+
+export const getNewsletterBySender = async (senderEmail: string): Promise<Newsletter | undefined> => {
+  const dbNewsletter = await db.newsletters.where('senderEmail').equals(senderEmail).first();
+  return dbNewsletter ? dbNewsletterToNewsletter(dbNewsletter) : undefined;
+};
+
+export const updateNewsletter = async (
+  id: number,
+  updates: Partial<Pick<Newsletter, 'emailCount' | 'lastEmailDate' | 'unsubscribeLink'>>
+): Promise<void> => {
+  const updateData: Record<string, unknown> = { ...updates };
+  if (updates.lastEmailDate) {
+    updateData.lastEmailDate = updates.lastEmailDate.getTime();
+  }
+  await db.newsletters.update(id, updateData);
+};
+
+const dbNewsletterToNewsletter = (dbNL: DBNewsletter): Newsletter => ({
+  ...dbNL,
+  lastEmailDate: new Date(dbNL.lastEmailDate),
+});
+
 // ==================== UTILITY OPERATIONS ====================
 
 export const clearAllData = async (): Promise<void> => {
@@ -319,6 +494,8 @@ export const clearAllData = async (): Promise<void> => {
     db.contacts.clear(),
     db.calendarEvents.clear(),
     db.folders.clear(),
+    db.subscriptions.clear(),
+    db.newsletters.clear(),
   ]);
 };
 
@@ -333,16 +510,20 @@ export interface ExportData {
   contacts: Contact[];
   calendarEvents: CalendarEvent[];
   folders: Folder[];
+  subscriptions: Subscription[];
+  newsletters: Newsletter[];
 }
 
 export const exportAllData = async (): Promise<ExportData> => {
-  const [emails, accounts, purchases, contacts, calendarEvents, folders] = await Promise.all([
+  const [emails, accounts, purchases, contacts, calendarEvents, folders, subscriptions, newsletters] = await Promise.all([
     getEmails(),
     getAccounts(),
     getPurchases(),
     getContacts(),
     getCalendarEvents(),
     getFolders(),
+    getSubscriptions(),
+    getNewsletters(),
   ]);
   
   return {
@@ -354,6 +535,8 @@ export const exportAllData = async (): Promise<ExportData> => {
     contacts,
     calendarEvents,
     folders,
+    subscriptions,
+    newsletters,
   };
 };
 

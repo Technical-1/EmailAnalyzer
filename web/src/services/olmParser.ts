@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Email, Contact, CalendarEvent, OLMProcessingResult, OLMProcessingProgress, Account } from '../types';
+import type { Email, Contact, CalendarEvent, OLMProcessingResult, OLMProcessingProgress, Account, Subscription, Newsletter } from '../types';
 import {
   insertEmail,
   insertAccount,
@@ -10,9 +10,17 @@ import {
   getAccountByServiceName,
   getContactByEmail,
   updateContactEmailCount,
+  insertSubscription,
+  getSubscriptionByServiceName,
+  updateSubscription,
+  insertNewsletter,
+  getNewsletterBySender,
+  updateNewsletter,
 } from '../db/database';
 import { accountDetector } from './accountDetector';
 import { purchaseDetector } from './purchaseDetector';
+import { subscriptionDetector } from './subscriptionDetector';
+import { newsletterDetector } from './newsletterDetector';
 import { cleanEmailAddress } from '../utils/emailUtils';
 
 export type ProgressCallback = (progress: OLMProcessingProgress) => void;
@@ -25,6 +33,8 @@ class OLMParser {
       calendarEvents: 0,
       accounts: 0,
       purchases: 0,
+      subscriptions: 0,
+      newsletters: 0,
     };
 
     try {
@@ -89,8 +99,11 @@ class OLMParser {
               const emailWithId = { ...email, id: emailId };
               await this.runDetection(emailWithId, result);
               
-              // Track contacts
-              await this.trackContact(email);
+              // Track contacts from email senders
+              const newContact = await this.trackContact(email);
+              if (newContact) {
+                result.contacts++;
+              }
             }
           } catch (err) {
             console.warn(`Failed to parse email ${emailFiles[i]}:`, err);
@@ -119,6 +132,14 @@ class OLMParser {
             const content = await zip.files[contactFiles[i]].async('string');
             const contacts = this.parseContactsXML(content);
             for (const contact of contacts) {
+              // Check if contact already exists (might have been created from email tracking)
+              if (contact.email) {
+                const existing = await getContactByEmail(contact.email);
+                if (existing) {
+                  // Skip duplicate - contact was already created from email
+                  continue;
+                }
+              }
               await insertContact(contact);
               result.contacts++;
             }
@@ -473,11 +494,71 @@ class OLMParser {
         result.purchases++;
       }
     }
+
+    // Detect subscriptions
+    const subResult = subscriptionDetector.detectSubscription(email);
+    if (subResult.isSubscription && subResult.serviceName) {
+      const existingSub = await getSubscriptionByServiceName(subResult.serviceName);
+      if (existingSub) {
+        // Update existing subscription with new email
+        const emailIds = [...existingSub.emailIds, email.id!];
+        const lastRenewalDate = email.date > existingSub.lastRenewalDate ? email.date : existingSub.lastRenewalDate;
+        await updateSubscription(existingSub.id!, {
+          emailIds,
+          lastRenewalDate,
+          monthlyAmount: subResult.amount || existingSub.monthlyAmount,
+        });
+      } else {
+        // Create new subscription
+        const newSub: Omit<Subscription, 'id'> = {
+          serviceName: subResult.serviceName,
+          monthlyAmount: subResult.amount || 0,
+          currency: subResult.currency || 'USD',
+          frequency: subResult.frequency || 'monthly',
+          lastRenewalDate: email.date,
+          emailIds: [email.id!],
+          isActive: true,
+          category: subResult.category || 'other',
+        };
+        await insertSubscription(newSub);
+        result.subscriptions++;
+      }
+    }
+
+    // Detect newsletters/promotional emails
+    const nlResult = newsletterDetector.detectNewsletter(email);
+    if (nlResult.isNewsletter || nlResult.isPromotional) {
+      const existingNL = await getNewsletterBySender(email.sender);
+      if (existingNL) {
+        // Update existing newsletter
+        await updateNewsletter(existingNL.id!, {
+          emailCount: existingNL.emailCount + 1,
+          lastEmailDate: email.date > existingNL.lastEmailDate ? email.date : existingNL.lastEmailDate,
+          unsubscribeLink: nlResult.unsubscribeLink || existingNL.unsubscribeLink,
+        });
+      } else {
+        // Create new newsletter entry
+        const newNL: Omit<Newsletter, 'id'> = {
+          senderEmail: email.sender,
+          senderName: email.senderName || email.sender.split('@')[0],
+          emailCount: 1,
+          lastEmailDate: email.date,
+          unsubscribeLink: nlResult.unsubscribeLink,
+          isPromotional: nlResult.isPromotional,
+        };
+        await insertNewsletter(newNL);
+        result.newsletters++;
+      }
+    }
   }
 
-  private async trackContact(email: Omit<Email, 'id'>): Promise<void> {
+  /**
+   * Track contact from email sender
+   * @returns true if a new contact was created, false if existing was updated
+   */
+  private async trackContact(email: Omit<Email, 'id'>): Promise<boolean> {
     const senderEmail = email.sender;
-    if (!senderEmail || senderEmail === 'unknown@example.com') return;
+    if (!senderEmail || senderEmail === 'unknown@example.com') return false;
 
     const existingContact = await getContactByEmail(senderEmail);
     if (existingContact) {
@@ -487,6 +568,7 @@ class OLMParser {
         existingContact.emailCount + 1,
         email.date
       );
+      return false; // Not a new contact
     } else {
       // Create new contact from email sender
       const senderName = email.senderName || senderEmail.split('@')[0] || 'Unknown';
@@ -497,6 +579,7 @@ class OLMParser {
         emailCount: 1,
         lastEmailDate: email.date,
       });
+      return true; // New contact created
     }
   }
 }

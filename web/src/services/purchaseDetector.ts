@@ -16,17 +16,36 @@ class PurchaseDetector {
     /^transaction receipt/i,
   ];
 
-  // Strong body patterns that indicate actual purchase confirmation
+  // Currency symbols and patterns
+  private readonly currencyPatterns = {
+    USD: { symbol: '$', pattern: /\$\s*([\d,]+\.\d{2})/ },
+    EUR: { symbol: '€', pattern: /€\s*([\d\s,]+[.,]\d{2})/ },
+    GBP: { symbol: '£', pattern: /£\s*([\d,]+\.\d{2})/ },
+    JPY: { symbol: '¥', pattern: /¥\s*([\d,]+)/ },
+    CAD: { symbol: 'C$', pattern: /C\$\s*([\d,]+\.\d{2})/ },
+    AUD: { symbol: 'A$', pattern: /A\$\s*([\d,]+\.\d{2})/ },
+    CHF: { symbol: 'CHF', pattern: /CHF\s*([\d',]+\.\d{2})/ },
+    CNY: { symbol: '¥', pattern: /(?:CN)?¥\s*([\d,]+\.\d{2})/ },
+    INR: { symbol: '₹', pattern: /₹\s*([\d,]+\.\d{2})/ },
+    KRW: { symbol: '₩', pattern: /₩\s*([\d,]+)/ },
+    MXN: { symbol: 'MX$', pattern: /MX\$\s*([\d,]+\.\d{2})/ },
+    BRL: { symbol: 'R$', pattern: /R\$\s*([\d,]+[.,]\d{2})/ },
+  };
+
+  // Strong body patterns that indicate actual purchase confirmation (multi-currency)
   private readonly strongBodyPatterns = [
-    /order\s+(?:total|summary)[:\s]+\$[\d,]+\.\d{2}/i,
-    /(?:amount|total)\s+(?:charged|paid)[:\s]+\$[\d,]+\.\d{2}/i,
+    /order\s+(?:total|summary)[:\s]+[$€£¥₹₩]\s*[\d,]+[.,]?\d*/i,
+    /(?:amount|total)\s+(?:charged|paid)[:\s]+[$€£¥₹₩]\s*[\d,]+[.,]?\d*/i,
     /you (?:have )?(?:paid|purchased|ordered)/i,
     /thank you for your (?:order|purchase) (?:of|from)/i,
     /your order has been (?:confirmed|placed|received)/i,
-    /payment of \$[\d,]+\.\d{2}/i,
-    /transaction amount[:\s]+\$[\d,]+\.\d{2}/i,
+    /payment of [$€£¥₹₩]\s*[\d,]+[.,]?\d*/i,
+    /transaction amount[:\s]+[$€£¥₹₩]\s*[\d,]+[.,]?\d*/i,
     /order #\s*[A-Z0-9-]{5,}/i,
     /order number[:\s]+[A-Z0-9-]{5,}/i,
+    /betrag[:\s]+€\s*[\d,]+[.,]\d{2}/i, // German
+    /montant[:\s]+€\s*[\d\s]+[.,]\d{2}/i, // French
+    /importe[:\s]+€\s*[\d,]+[.,]\d{2}/i, // Spanish
   ];
 
   // Patterns that indicate this is NOT a purchase (promotional emails, etc.)
@@ -207,6 +226,7 @@ class PurchaseDetector {
 
     let confidence = 0;
     let amount = 0;
+    let currency = 'USD';
     let merchant = '';
     let orderNumber = '';
 
@@ -236,7 +256,10 @@ class PurchaseDetector {
 
     // Only extract amount if we have some confidence this is a purchase
     if (confidence >= 30) {
-      amount = this.extractAmount(body);
+      const extracted = this.extractAmount(body);
+      amount = extracted.amount;
+      currency = extracted.currency;
+      
       if (amount > 0 && amount < 10000) { // Reasonable purchase amount
         confidence += 20;
       } else if (amount >= 10000) {
@@ -264,6 +287,7 @@ class PurchaseDetector {
         data: {
           merchant,
           amount,
+          currency,
           orderNumber: this.isValidOrderNumber(orderNumber) ? orderNumber : undefined,
         },
       };
@@ -272,44 +296,87 @@ class PurchaseDetector {
     return { type: 'none', confidence: 0 };
   }
 
-  private extractAmount(text: string): number {
-    // Look for amounts in context of totals/charges
+  private extractAmount(text: string): { amount: number; currency: string } {
+    // Multi-currency context patterns
     const contextPatterns = [
-      /(?:order\s+)?total[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /(?:amount|total)\s+(?:charged|paid|due)[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /payment\s+(?:of|amount)[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /you\s+(?:paid|charged)[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /transaction\s+(?:amount|total)[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /subtotal[:\s]+\$\s*([\d,]+\.\d{2})/i,
-      /grand\s+total[:\s]+\$\s*([\d,]+\.\d{2})/i,
+      // USD
+      { currency: 'USD', pattern: /(?:order\s+)?total[:\s]+\$\s*([\d,]+\.\d{2})/i },
+      { currency: 'USD', pattern: /(?:amount|total)\s+(?:charged|paid|due)[:\s]+\$\s*([\d,]+\.\d{2})/i },
+      { currency: 'USD', pattern: /payment\s+(?:of|amount)[:\s]+\$\s*([\d,]+\.\d{2})/i },
+      { currency: 'USD', pattern: /grand\s+total[:\s]+\$\s*([\d,]+\.\d{2})/i },
+      // EUR
+      { currency: 'EUR', pattern: /(?:order\s+)?total[:\s]+€\s*([\d\s,]+[.,]\d{2})/i },
+      { currency: 'EUR', pattern: /(?:amount|total)\s+(?:charged|paid|due)[:\s]+€\s*([\d\s,]+[.,]\d{2})/i },
+      { currency: 'EUR', pattern: /betrag[:\s]+€\s*([\d,]+[.,]\d{2})/i },
+      { currency: 'EUR', pattern: /montant[:\s]+€\s*([\d\s]+[.,]\d{2})/i },
+      { currency: 'EUR', pattern: /importe[:\s]+€\s*([\d,]+[.,]\d{2})/i },
+      // GBP
+      { currency: 'GBP', pattern: /(?:order\s+)?total[:\s]+£\s*([\d,]+\.\d{2})/i },
+      { currency: 'GBP', pattern: /(?:amount|total)\s+(?:charged|paid|due)[:\s]+£\s*([\d,]+\.\d{2})/i },
+      // JPY
+      { currency: 'JPY', pattern: /(?:order\s+)?total[:\s]+¥\s*([\d,]+)/i },
+      { currency: 'JPY', pattern: /(?:amount|total)[:\s]+¥\s*([\d,]+)/i },
+      // CAD
+      { currency: 'CAD', pattern: /(?:order\s+)?total[:\s]+C\$\s*([\d,]+\.\d{2})/i },
+      // AUD
+      { currency: 'AUD', pattern: /(?:order\s+)?total[:\s]+A\$\s*([\d,]+\.\d{2})/i },
+      // INR
+      { currency: 'INR', pattern: /(?:order\s+)?total[:\s]+₹\s*([\d,]+\.\d{2})/i },
+      // CHF
+      { currency: 'CHF', pattern: /(?:order\s+)?total[:\s]+CHF\s*([\d',]+\.\d{2})/i },
     ];
 
-    for (const pattern of contextPatterns) {
+    for (const { currency, pattern } of contextPatterns) {
       const match = text.match(pattern);
       if (match && match[1]) {
-        const amount = parseFloat(match[1].replace(/,/g, ''));
-        if (!isNaN(amount) && amount > 0) {
-          return amount;
+        const amount = this.parseAmount(match[1], currency);
+        if (amount > 0) {
+          return { amount, currency };
         }
       }
     }
 
-    // Fallback: look for dollar amounts that appear to be totals
-    // Only if we find exactly one or two dollar amounts (likely subtotal + total)
-    const allAmounts = text.match(/\$\s*([\d,]+\.\d{2})/g);
-    if (allAmounts && allAmounts.length >= 1 && allAmounts.length <= 5) {
-      const amounts = allAmounts.map(a => {
-        const num = a.match(/[\d,]+\.\d{2}/);
-        return num ? parseFloat(num[0].replace(/,/g, '')) : 0;
-      }).filter(a => a > 0 && a < 50000); // Reasonable purchase limits
+    // Fallback: detect currency from any amount found
+    const currencyMatches = [
+      { currency: 'EUR', regex: /€\s*([\d\s,]+[.,]\d{2})/g },
+      { currency: 'GBP', regex: /£\s*([\d,]+\.\d{2})/g },
+      { currency: 'JPY', regex: /¥\s*([\d,]+)/g },
+      { currency: 'INR', regex: /₹\s*([\d,]+[.,]\d{2})/g },
+      { currency: 'USD', regex: /\$\s*([\d,]+\.\d{2})/g },
+    ];
 
-      if (amounts.length > 0) {
-        // Return the largest (usually the total)
-        return Math.max(...amounts);
+    for (const { currency, regex } of currencyMatches) {
+      const allAmounts = [...text.matchAll(regex)];
+      if (allAmounts.length >= 1 && allAmounts.length <= 5) {
+        const amounts = allAmounts
+          .map(m => this.parseAmount(m[1], currency))
+          .filter(a => a > 0 && a < 500000);
+
+        if (amounts.length > 0) {
+          return { amount: Math.max(...amounts), currency };
+        }
       }
     }
 
-    return 0;
+    return { amount: 0, currency: 'USD' };
+  }
+
+  private parseAmount(amountStr: string, currency: string): number {
+    let cleaned = amountStr.replace(/\s/g, '');
+    
+    // Handle European format (1.234,56 or 1 234,56)
+    if (currency === 'EUR' || currency === 'CHF' || currency === 'BRL') {
+      // Check if comma is decimal separator
+      if (/,\d{2}$/.test(cleaned)) {
+        cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      }
+    }
+    
+    // Remove thousand separators
+    cleaned = cleaned.replace(/[']/g, '').replace(/,(?=\d{3})/g, '');
+    
+    const amount = parseFloat(cleaned);
+    return isNaN(amount) ? 0 : amount;
   }
 
   private extractOrderNumber(text: string): string {
