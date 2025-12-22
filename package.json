@@ -1,0 +1,11 @@
+{
+  "name": "email-analyzer",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd web && npm run dev",
+    "build": "cd web && npm run build",
+    "preview": "cd web && npm run preview"
+  }
+}
+
