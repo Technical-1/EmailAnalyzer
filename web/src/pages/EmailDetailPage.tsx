@@ -1,18 +1,42 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip } from 'lucide-react';
+import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck } from 'lucide-react';
 import { useAppStore } from '../store';
+import { SYSTEM_FOLDERS } from '../types';
 
 export function EmailDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getEmailById } = useAppStore();
+  const { 
+    emails,
+    toggleEmailStar, 
+    toggleEmailRead,
+    markEmailAsRead,
+    archiveEmail,
+    deleteEmail,
+    restoreEmail,
+    permanentlyDeleteEmail,
+  } = useAppStore();
 
+  // Get email directly from emails array so component re-renders when it changes
   const email = useMemo(() => {
     if (!id) return null;
-    return getEmailById(parseInt(id));
-  }, [id, getEmailById]);
+    const emailId = parseInt(id);
+    return emails.find(e => e.id === emailId) ?? null;
+  }, [id, emails]);
+
+  // Scroll to top when opening email
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
+
+  // Mark email as read when viewing
+  useEffect(() => {
+    if (email?.id && !email.isRead) {
+      markEmailAsRead(email.id);
+    }
+  }, [email?.id, email?.isRead, markEmailAsRead]);
 
   const handleBack = () => {
     // Use browser history to go back to the previous page
@@ -56,11 +80,89 @@ export function EmailDetailPage() {
         <h1 className="text-xl font-semibold text-slate-900 dark:text-white flex-1 truncate">
           {email.subject || '(No Subject)'}
         </h1>
-        <button
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-        >
-          <Star className={`w-5 h-5 ${email.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-slate-400'}`} />
-        </button>
+        
+        {/* Action buttons */}
+        <div className="flex items-center gap-1">
+          {/* Toggle read/unread */}
+          <button
+            onClick={() => email.id && toggleEmailRead(email.id)}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            title={email.isRead ? 'Mark as unread' : 'Mark as read'}
+          >
+            {email.isRead ? (
+              <Mail className="w-5 h-5 text-slate-400" />
+            ) : (
+              <MailCheck className="w-5 h-5 text-blue-500" />
+            )}
+          </button>
+          
+          {/* Star */}
+          <button
+            onClick={() => email.id && toggleEmailStar(email.id)}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+            title={email.isStarred ? 'Remove star' : 'Add star'}
+          >
+            <Star className={`w-5 h-5 ${email.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-slate-400'}`} />
+          </button>
+          
+          {/* Archive/Restore based on folder */}
+          {email.folderId === SYSTEM_FOLDERS.TRASH ? (
+            <button
+              onClick={() => {
+                if (email.id) {
+                  restoreEmail(email.id);
+                  handleBack();
+                }
+              }}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Restore from trash"
+            >
+              <RotateCcw className="w-5 h-5 text-green-500" />
+            </button>
+          ) : email.folderId !== SYSTEM_FOLDERS.ARCHIVE ? (
+            <button
+              onClick={() => {
+                if (email.id) {
+                  archiveEmail(email.id);
+                  handleBack();
+                }
+              }}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Archive"
+            >
+              <Archive className="w-5 h-5 text-slate-400" />
+            </button>
+          ) : null}
+          
+          {/* Delete/Permanent delete */}
+          {email.folderId === SYSTEM_FOLDERS.TRASH ? (
+            <button
+              onClick={() => {
+                if (email.id && confirm('Permanently delete this email? This cannot be undone.')) {
+                  permanentlyDeleteEmail(email.id);
+                  handleBack();
+                }
+              }}
+              className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
+              title="Delete permanently"
+            >
+              <Trash2 className="w-5 h-5 text-red-500" />
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                if (email.id) {
+                  deleteEmail(email.id);
+                  handleBack();
+                }
+              }}
+              className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              title="Move to trash"
+            >
+              <Trash2 className="w-5 h-5 text-slate-400" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Email content */}
@@ -102,8 +204,21 @@ export function EmailDetailPage() {
                   To: {email.recipients.join(', ')}
                 </div>
               )}
-              <div className="text-sm text-slate-500 dark:text-slate-400">
+              <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
                 {format(email.date, 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
+                {email.folderId !== SYSTEM_FOLDERS.INBOX && (
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    email.folderId === SYSTEM_FOLDERS.ARCHIVE 
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                      : email.folderId === SYSTEM_FOLDERS.TRASH
+                        ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}>
+                    {email.folderId === SYSTEM_FOLDERS.ARCHIVE ? 'Archived' : 
+                     email.folderId === SYSTEM_FOLDERS.TRASH ? 'Trash' : 
+                     email.folderId}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -150,9 +265,46 @@ export function EmailDetailPage() {
         {/* Body */}
         <div className="p-6">
           {email.htmlBody ? (
-            <div
-              className="prose dark:prose-invert max-w-none overflow-x-auto"
-              dangerouslySetInnerHTML={{ __html: email.htmlBody }}
+            <iframe
+              srcDoc={`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <meta charset="utf-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                    * { box-sizing: border-box; }
+                    body { 
+                      margin: 0; 
+                      padding: 0; 
+                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+                      font-size: 14px;
+                      line-height: 1.5;
+                      color: #334155;
+                      background: transparent;
+                    }
+                    a { color: #3b82f6; }
+                    img { max-width: 100%; height: auto; }
+                    table { max-width: 100%; }
+                  </style>
+                </head>
+                <body>${email.htmlBody}</body>
+                </html>
+              `}
+              className="w-full border-0 min-h-[400px]"
+              style={{ 
+                height: 'auto',
+                minHeight: '400px',
+              }}
+              onLoad={(e) => {
+                const iframe = e.target as HTMLIFrameElement;
+                if (iframe.contentDocument) {
+                  const height = iframe.contentDocument.body.scrollHeight;
+                  iframe.style.height = `${Math.max(height + 20, 400)}px`;
+                }
+              }}
+              sandbox="allow-same-origin"
+              title="Email content"
             />
           ) : (
             <pre className="whitespace-pre-wrap font-sans text-slate-700 dark:text-slate-300">

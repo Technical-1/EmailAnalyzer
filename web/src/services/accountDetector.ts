@@ -1,4 +1,5 @@
 import type { Email, Account, DetectionResult } from '../types';
+import { stripHtml, extractDomain } from '../utils/emailUtils';
 
 class AccountDetector {
   // Strong subject line patterns for account signups (must be primary purpose of email)
@@ -113,7 +114,7 @@ class AccountDetector {
 
   detectAccountSignup(email: Email): DetectionResult {
     const subject = email.subject || '';
-    const body = this.stripHtml(email.body || '');
+    const body = stripHtml(email.body || '');
     const sender = email.sender || '';
 
     let confidence = 0;
@@ -121,7 +122,7 @@ class AccountDetector {
     let serviceType: Account['serviceType'] = 'other';
 
     // Check if sender is from a known service
-    const domain = this.extractDomain(sender);
+    const domain = extractDomain(sender);
     const serviceInfo = this.findKnownService(domain);
 
     if (serviceInfo) {
@@ -148,7 +149,7 @@ class AccountDetector {
 
     // If we have strong patterns but no known service, try to extract service name
     if (confidence >= 40 && !detectedService) {
-      const extracted = this.extractServiceName(subject, body);
+      const extracted = this.extractServiceName(subject);
       if (extracted) {
         detectedService = extracted;
         confidence += 10;
@@ -171,25 +172,6 @@ class AccountDetector {
     }
 
     return { type: 'none', confidence: 0 };
-  }
-
-  private stripHtml(text: string): string {
-    // Remove HTML tags and decode entities
-    return text
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#\d+;/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  }
-
-  private extractDomain(email: string): string {
-    const match = email.match(/@(.+)/);
-    return match ? match[1].toLowerCase() : '';
   }
 
   private findKnownService(domain: string): { name: string; type: Account['serviceType'] } | null {
@@ -216,7 +198,7 @@ class AccountDetector {
     return null;
   }
 
-  private extractServiceName(subject: string, _body: string): string {
+  private extractServiceName(subject: string): string {
     // Very strict patterns - only match clear service name mentions
     const patterns = [
       /^welcome to ([A-Z][a-zA-Z0-9]+(?:\s[A-Z][a-zA-Z0-9]+)?)[!.,]/i,
@@ -265,7 +247,7 @@ class AccountDetector {
   }
 
   createAccountFromEmail(email: Email, serviceName: string, serviceType?: Account['serviceType']): Omit<Account, 'id'> {
-    const senderDomain = this.extractDomain(email.sender);
+    const senderDomain = extractDomain(email.sender);
 
     return {
       serviceName,

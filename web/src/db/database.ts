@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Email, Account, Purchase, Contact, CalendarEvent } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder } from '../types';
 
 // Database email type (with id required)
 interface DBEmail extends Omit<Email, 'date'> {
@@ -29,6 +29,10 @@ interface DBCalendarEvent extends Omit<CalendarEvent, 'startDate' | 'endDate'> {
   endDate: number;
 }
 
+interface DBFolder extends Omit<Folder, 'createdAt'> {
+  createdAt: number;
+}
+
 // Database class
 class EmailAnalyzerDB extends Dexie {
   emails!: EntityTable<DBEmail, 'id'>;
@@ -36,6 +40,7 @@ class EmailAnalyzerDB extends Dexie {
   purchases!: EntityTable<DBPurchase, 'id'>;
   contacts!: EntityTable<DBContact, 'id'>;
   calendarEvents!: EntityTable<DBCalendarEvent, 'id'>;
+  folders!: EntityTable<DBFolder, 'id'>;
 
   constructor() {
     super('EmailAnalyzerDB');
@@ -46,6 +51,16 @@ class EmailAnalyzerDB extends Dexie {
       purchases: '++id, merchant, amount, purchaseDate, category',
       contacts: '++id, name, email, emailCount',
       calendarEvents: '++id, title, startDate, endDate, isAllDay',
+    });
+    
+    // Version 2 adds folders table
+    this.version(2).stores({
+      emails: '++id, subject, sender, date, emailType, folderId, isRead, isStarred',
+      accounts: '++id, serviceName, serviceType, domain, signupDate',
+      purchases: '++id, merchant, amount, purchaseDate, category',
+      contacts: '++id, name, email, emailCount',
+      calendarEvents: '++id, title, startDate, endDate, isAllDay',
+      folders: 'id, name, isSystem, createdAt',
     });
   }
 }
@@ -62,15 +77,6 @@ export const insertEmail = async (email: Omit<Email, 'id'>): Promise<number> => 
   } as DBEmail);
 };
 
-export const insertEmails = async (emails: Omit<Email, 'id'>[]): Promise<number[]> => {
-  const dbEmails = emails.map(email => ({
-    ...email,
-    date: email.date.getTime(),
-  })) as DBEmail[];
-  
-  return await db.emails.bulkAdd(dbEmails, { allKeys: true }) as number[];
-};
-
 export const getEmails = async (): Promise<Email[]> => {
   const dbEmails = await db.emails.orderBy('date').reverse().toArray();
   return dbEmails.map(dbEmailToEmail);
@@ -81,32 +87,24 @@ export const getEmailById = async (id: number): Promise<Email | undefined> => {
   return dbEmail ? dbEmailToEmail(dbEmail) : undefined;
 };
 
-export const searchEmails = async (query: string): Promise<Email[]> => {
-  if (!query.trim()) {
-    return getEmails();
-  }
-  
-  const lowercaseQuery = query.toLowerCase();
-  const dbEmails = await db.emails.filter(email => 
-    email.subject.toLowerCase().includes(lowercaseQuery) ||
-    email.body.toLowerCase().includes(lowercaseQuery) ||
-    email.sender.toLowerCase().includes(lowercaseQuery)
-  ).toArray();
-  
-  return dbEmails.map(dbEmailToEmail);
-};
-
-export const getEmailsByType = async (type: Email['emailType']): Promise<Email[]> => {
-  const dbEmails = await db.emails.where('emailType').equals(type).toArray();
-  return dbEmails.map(dbEmailToEmail);
-};
-
 export const updateEmailRead = async (id: number, isRead: boolean): Promise<void> => {
   await db.emails.update(id, { isRead });
 };
 
 export const updateEmailStar = async (id: number, isStarred: boolean): Promise<void> => {
   await db.emails.update(id, { isStarred });
+};
+
+export const updateEmailFolder = async (id: number, folderId: string): Promise<void> => {
+  await db.emails.update(id, { folderId });
+};
+
+export const deleteEmail = async (id: number): Promise<void> => {
+  await db.emails.delete(id);
+};
+
+export const deleteEmails = async (ids: number[]): Promise<void> => {
+  await db.emails.bulkDelete(ids);
 };
 
 const dbEmailToEmail = (dbEmail: DBEmail): Email => ({
@@ -219,6 +217,13 @@ export const updateContactEmailCount = async (email: string, count: number, last
   }
 };
 
+export const updateContact = async (
+  id: number, 
+  updates: Partial<Pick<Contact, 'phone' | 'notes' | 'tags'>>
+): Promise<void> => {
+  await db.contacts.update(id, updates);
+};
+
 const dbContactToContact = (dbContact: DBContact): Contact => ({
   ...dbContact,
   lastEmailDate: new Date(dbContact.lastEmailDate),
@@ -239,11 +244,70 @@ export const getCalendarEvents = async (): Promise<CalendarEvent[]> => {
   return dbEvents.map(dbEventToEvent);
 };
 
+export const updateCalendarEventRead = async (id: number, isRead: boolean): Promise<void> => {
+  await db.calendarEvents.update(id, { isRead });
+};
+
+export const deleteCalendarEvent = async (id: number): Promise<void> => {
+  await db.calendarEvents.delete(id);
+};
+
+export const deleteCalendarEvents = async (ids: number[]): Promise<void> => {
+  await db.calendarEvents.bulkDelete(ids);
+};
+
 const dbEventToEvent = (dbEvent: DBCalendarEvent): CalendarEvent => ({
   ...dbEvent,
   startDate: new Date(dbEvent.startDate),
   endDate: new Date(dbEvent.endDate),
 });
+
+// ==================== FOLDER OPERATIONS ====================
+
+export const getFolders = async (): Promise<Folder[]> => {
+  const dbFolders = await db.folders.orderBy('createdAt').toArray();
+  return dbFolders.map(dbFolderToFolder);
+};
+
+export const createFolder = async (folder: Folder): Promise<void> => {
+  await db.folders.add({
+    ...folder,
+    createdAt: folder.createdAt.getTime(),
+  });
+};
+
+export const deleteFolder = async (id: string): Promise<void> => {
+  // Move all emails from this folder back to inbox before deleting
+  const emails = await db.emails.where('folderId').equals(id).toArray();
+  await Promise.all(emails.map(e => db.emails.update(e.id, { folderId: 'inbox' })));
+  await db.folders.delete(id);
+};
+
+export const updateFolder = async (id: string, updates: Partial<Pick<Folder, 'name' | 'color' | 'icon'>>): Promise<void> => {
+  await db.folders.update(id, updates);
+};
+
+const dbFolderToFolder = (dbFolder: DBFolder): Folder => ({
+  ...dbFolder,
+  createdAt: new Date(dbFolder.createdAt),
+});
+
+// Initialize default system folders
+export const initializeSystemFolders = async (): Promise<void> => {
+  const existingFolders = await db.folders.toArray();
+  const systemFolderIds = ['inbox', 'archive', 'trash'];
+  
+  for (const folderId of systemFolderIds) {
+    if (!existingFolders.find(f => f.id === folderId)) {
+      await db.folders.add({
+        id: folderId,
+        name: folderId.charAt(0).toUpperCase() + folderId.slice(1),
+        isSystem: true,
+        createdAt: Date.now(),
+      });
+    }
+  }
+};
 
 // ==================== UTILITY OPERATIONS ====================
 
@@ -254,23 +318,42 @@ export const clearAllData = async (): Promise<void> => {
     db.purchases.clear(),
     db.contacts.clear(),
     db.calendarEvents.clear(),
+    db.folders.clear(),
   ]);
 };
 
-export const getEmailCount = async (): Promise<number> => {
-  return await db.emails.count();
-};
+// ==================== EXPORT OPERATIONS ====================
 
-export const getAccountCount = async (): Promise<number> => {
-  return await db.accounts.count();
-};
+export interface ExportData {
+  version: string;
+  exportDate: string;
+  emails: Email[];
+  accounts: Account[];
+  purchases: Purchase[];
+  contacts: Contact[];
+  calendarEvents: CalendarEvent[];
+  folders: Folder[];
+}
 
-export const getPurchaseCount = async (): Promise<number> => {
-  return await db.purchases.count();
-};
-
-export const getTotalPurchaseAmount = async (): Promise<number> => {
-  const purchases = await db.purchases.toArray();
-  return purchases.reduce((sum, p) => sum + p.amount, 0);
+export const exportAllData = async (): Promise<ExportData> => {
+  const [emails, accounts, purchases, contacts, calendarEvents, folders] = await Promise.all([
+    getEmails(),
+    getAccounts(),
+    getPurchases(),
+    getContacts(),
+    getCalendarEvents(),
+    getFolders(),
+  ]);
+  
+  return {
+    version: '1.0.0',
+    exportDate: new Date().toISOString(),
+    emails,
+    accounts,
+    purchases,
+    contacts,
+    calendarEvents,
+    folders,
+  };
 };
 

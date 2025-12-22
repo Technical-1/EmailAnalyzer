@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ShoppingBag, TrendingUp } from 'lucide-react';
@@ -26,12 +26,11 @@ const categoryIcons: Record<string, string> = {
 export function PurchasesPage() {
   const navigate = useNavigate();
   const { purchases } = useAppStore();
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Calculate stats in memory
-  const { totalAmount, categoryTotals } = useMemo(() => {
-    const total = purchases.reduce((sum, p) => sum + p.amount, 0);
-    
-    const categories = purchases.reduce((acc, purchase) => {
+  // Calculate category totals from all purchases
+  const categoryTotals = useMemo(() => {
+    return purchases.reduce((acc, purchase) => {
       const category = purchase.category || 'other';
       if (!acc[category]) {
         acc[category] = { count: 0, total: 0 };
@@ -40,16 +39,30 @@ export function PurchasesPage() {
       acc[category].total += purchase.amount;
       return acc;
     }, {} as Record<string, { count: number; total: number }>);
-    
-    return { totalAmount: total, categoryTotals: categories };
   }, [purchases]);
+
+  // Filter purchases based on selected category
+  const filteredPurchases = useMemo(() => {
+    if (!selectedCategory) return purchases;
+    return purchases.filter(p => (p.category || 'other') === selectedCategory);
+  }, [purchases, selectedCategory]);
+
+  // Calculate stats from filtered purchases
+  const { totalAmount, avgAmount } = useMemo(() => {
+    const total = filteredPurchases.reduce((sum, p) => sum + p.amount, 0);
+    const avg = filteredPurchases.length > 0 ? total / filteredPurchases.length : 0;
+    return { totalAmount: total, avgAmount: avg };
+  }, [filteredPurchases]);
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-white">My Purchases</h1>
         <p className="text-slate-500 dark:text-slate-400 mt-1">
-          {purchases.length} purchases detected from your emails
+          {selectedCategory 
+            ? `Showing ${filteredPurchases.length} of ${purchases.length} purchases in ${selectedCategory}`
+            : `${purchases.length} purchases detected from your emails`
+          }
         </p>
       </div>
 
@@ -58,44 +71,65 @@ export function PurchasesPage() {
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
             <StatsCard
-              title="Total Spent"
+              title={selectedCategory ? `Total Spent (${selectedCategory})` : "Total Spent"}
               value={`$${totalAmount.toFixed(2)}`}
               icon={ShoppingBag}
               iconColor="text-green-500"
             />
             <StatsCard
-              title="Total Purchases"
-              value={purchases.length}
+              title={selectedCategory ? `Purchases (${selectedCategory})` : "Total Purchases"}
+              value={filteredPurchases.length}
               icon={TrendingUp}
               iconColor="text-blue-500"
             />
             <StatsCard
               title="Avg. Purchase"
-              value={`$${(totalAmount / purchases.length).toFixed(2)}`}
+              value={`$${avgAmount.toFixed(2)}`}
               icon={ShoppingBag}
               iconColor="text-purple-500"
             />
           </div>
 
-          {/* Category breakdown */}
+          {/* Category Filter */}
           <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 mb-8">
             <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
-              By Category
+              Filter by Category
             </h2>
             <div className="flex flex-wrap gap-3">
-              {Object.entries(categoryTotals).map(([category, data]) => (
-                <div
+              {/* All option */}
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                  selectedCategory === null
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
+              >
+                <span>📊</span>
+                <span>All</span>
+                <span className={selectedCategory === null ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}>
+                  ({purchases.length})
+                </span>
+              </button>
+              
+              {Object.entries(categoryTotals)
+                .sort((a, b) => b[1].total - a[1].total) // Sort by total amount
+                .map(([category, data]) => (
+                <button
                   key={category}
-                  className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg"
+                  onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+                    selectedCategory === category
+                      ? 'bg-blue-500 text-white'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                  }`}
                 >
                   <span>{categoryIcons[category] || '📦'}</span>
-                  <span className="font-medium text-slate-700 dark:text-slate-200 capitalize">
-                    {category}
+                  <span className="capitalize">{category}</span>
+                  <span className={selectedCategory === category ? 'text-blue-100' : 'text-slate-500 dark:text-slate-400'}>
+                    ${data.total.toFixed(0)} ({data.count})
                   </span>
-                  <span className="text-slate-500 dark:text-slate-400">
-                    ${data.total.toFixed(2)} ({data.count})
-                  </span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -123,7 +157,7 @@ export function PurchasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {purchases.slice(0, 100).map(purchase => (
+                {filteredPurchases.slice(0, 100).map(purchase => (
                   <tr
                     key={purchase.id}
                     onClick={() => purchase.emailId && navigate(`/emails/${purchase.emailId}`)}
@@ -157,9 +191,9 @@ export function PurchasesPage() {
                 ))}
               </tbody>
             </table>
-            {purchases.length > 100 && (
+            {filteredPurchases.length > 100 && (
               <div className="p-4 text-center text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
-                Showing 100 of {purchases.length} purchases
+                Showing 100 of {filteredPurchases.length} purchases
               </div>
             )}
           </div>

@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
 import { useAppStore } from '../store';
+import { SYSTEM_FOLDERS } from '../types';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
 type SortField = 'date' | 'sender' | 'subject';
@@ -12,20 +13,42 @@ type SortOrder = 'asc' | 'desc';
 
 const EMAILS_PER_PAGE = 50;
 
-export function EmailsPage() {
+// Wrapper component to reset state on folder change
+function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
   const navigate = useNavigate();
-  const { emails } = useAppStore();
+  const { emails, emptyTrash } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Special handling for favorites (starred emails across all folders)
+  const isFavorites = folderParam === 'favorites';
+
+  // Determine current folder
+  const currentFolder = folderParam === 'archive' ? SYSTEM_FOLDERS.ARCHIVE 
+    : folderParam === 'trash' ? SYSTEM_FOLDERS.TRASH 
+    : SYSTEM_FOLDERS.INBOX;
+
+  const folderTitle = isFavorites ? 'Favorites'
+    : currentFolder === SYSTEM_FOLDERS.ARCHIVE ? 'Archive' 
+    : currentFolder === SYSTEM_FOLDERS.TRASH ? 'Trash' 
+    : 'Inbox';
+
+  const FolderIcon = isFavorites ? Star
+    : currentFolder === SYSTEM_FOLDERS.ARCHIVE ? Archive 
+    : currentFolder === SYSTEM_FOLDERS.TRASH ? Trash2 
+    : Inbox;
+
   // Filter, search, and sort emails
   const processedEmails = useMemo(() => {
-    let result = [...emails];
+    // Start with emails based on folder type
+    let result = isFavorites 
+      ? emails.filter(e => e.isStarred) // Favorites shows all starred emails
+      : emails.filter(e => e.folderId === currentFolder);
 
-    // Apply filter
+    // Apply filter (skip starred filter if in favorites view)
     switch (filter) {
       case 'account_signup':
         result = result.filter(e => e.emailType === 'account_signup');
@@ -37,7 +60,9 @@ export function EmailsPage() {
         result = result.filter(e => !e.isRead);
         break;
       case 'starred':
-        result = result.filter(e => e.isStarred);
+        if (!isFavorites) {
+          result = result.filter(e => e.isStarred);
+        }
         break;
     }
 
@@ -69,7 +94,11 @@ export function EmailsPage() {
     });
 
     return result;
-  }, [emails, filter, searchQuery, sortField, sortOrder]);
+  }, [emails, currentFolder, isFavorites, filter, searchQuery, sortField, sortOrder]);
+
+  const folderEmailCount = isFavorites 
+    ? emails.filter(e => e.isStarred).length 
+    : emails.filter(e => e.folderId === currentFolder).length;
 
   // Pagination
   const totalPages = Math.ceil(processedEmails.length / EMAILS_PER_PAGE);
@@ -99,13 +128,21 @@ export function EmailsPage() {
     setCurrentPage(1);
   };
 
-  const filters: { value: FilterType; label: string }[] = [
-    { value: 'all', label: 'All' },
-    { value: 'account_signup', label: 'Account Signups' },
-    { value: 'purchase', label: 'Purchases' },
-    { value: 'unread', label: 'Unread' },
-    { value: 'starred', label: 'Starred' },
-  ];
+  // Don't show starred filter in favorites view since all are already starred
+  const filters: { value: FilterType; label: string }[] = isFavorites
+    ? [
+        { value: 'all', label: 'All' },
+        { value: 'account_signup', label: 'Account Signups' },
+        { value: 'purchase', label: 'Purchases' },
+        { value: 'unread', label: 'Unread' },
+      ]
+    : [
+        { value: 'all', label: 'All' },
+        { value: 'account_signup', label: 'Account Signups' },
+        { value: 'purchase', label: 'Purchases' },
+        { value: 'unread', label: 'Unread' },
+        { value: 'starred', label: 'Starred' },
+      ];
 
   const sortOptions: { value: SortField; label: string }[] = [
     { value: 'date', label: 'Date' },
@@ -116,12 +153,33 @@ export function EmailsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Emails</h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
-            {processedEmails.length} emails {filter !== 'all' ? `(filtered from ${emails.length})` : 'in your archive'}
-          </p>
+        <div className="flex items-center gap-3">
+          <FolderIcon className={`w-8 h-8 ${
+            isFavorites ? 'text-yellow-500 fill-yellow-500'
+            : currentFolder === SYSTEM_FOLDERS.ARCHIVE ? 'text-blue-500' 
+            : currentFolder === SYSTEM_FOLDERS.TRASH ? 'text-red-500' 
+            : 'text-slate-500'
+          }`} />
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{folderTitle}</h1>
+            <p className="text-slate-500 dark:text-slate-400 mt-1">
+              {processedEmails.length} emails {filter !== 'all' ? `(filtered from ${folderEmailCount})` : ''}
+            </p>
+          </div>
         </div>
+        {!isFavorites && currentFolder === SYSTEM_FOLDERS.TRASH && folderEmailCount > 0 && (
+          <button
+            onClick={() => {
+              if (confirm(`Permanently delete all ${folderEmailCount} emails in trash? This cannot be undone.`)) {
+                emptyTrash();
+              }
+            }}
+            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium flex items-center gap-2 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Empty Trash
+          </button>
+        )}
       </div>
 
       {/* Search */}
@@ -135,32 +193,40 @@ export function EmailsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {filters.map(f => (
-          <button
-            key={f.value}
-            onClick={() => handleFilterChange(f.value)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
-              filter === f.value
-                ? 'bg-blue-500 text-white'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
-            }`}
-          >
-            {f.label}
-            {f.value !== 'all' && (
-              <span className="ml-1 opacity-70">
-                ({emails.filter(e => {
-                  switch (f.value) {
-                    case 'account_signup': return e.emailType === 'account_signup';
-                    case 'purchase': return e.emailType === 'purchase';
-                    case 'unread': return !e.isRead;
-                    case 'starred': return e.isStarred;
-                    default: return false;
-                  }
-                }).length})
-              </span>
-            )}
-          </button>
-        ))}
+        {filters.map(f => {
+          // Use starred emails for favorites, otherwise folder-based emails
+          const baseEmails = isFavorites 
+            ? emails.filter(e => e.isStarred)
+            : emails.filter(e => e.folderId === currentFolder);
+          const count = f.value === 'all' 
+            ? baseEmails.length 
+            : baseEmails.filter(e => {
+                switch (f.value) {
+                  case 'account_signup': return e.emailType === 'account_signup';
+                  case 'purchase': return e.emailType === 'purchase';
+                  case 'unread': return !e.isRead;
+                  case 'starred': return e.isStarred;
+                  default: return false;
+                }
+              }).length;
+          
+          return (
+            <button
+              key={f.value}
+              onClick={() => handleFilterChange(f.value)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                filter === f.value
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              {f.label}
+              {f.value !== 'all' && (
+                <span className="ml-1 opacity-70">({count})</span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Sort Options */}
@@ -264,6 +330,20 @@ export function EmailsPage() {
           actionLabel="Upload OLM File"
           actionTo="/"
         />
+      ) : folderEmailCount === 0 ? (
+        <EmptyState
+          icon={FolderIcon}
+          title={`No Emails in ${folderTitle}`}
+          description={
+            isFavorites 
+              ? "Star emails to add them to your favorites."
+              : currentFolder === SYSTEM_FOLDERS.TRASH 
+                ? "Deleted emails will appear here." 
+                : currentFolder === SYSTEM_FOLDERS.ARCHIVE 
+                  ? "Archived emails will appear here."
+                  : "Your inbox is empty."
+          }
+        />
       ) : (
         <EmptyState
           icon={Mail}
@@ -273,4 +353,13 @@ export function EmailsPage() {
       )}
     </div>
   );
+}
+
+// Main export - uses key prop to reset state when folder changes
+export function EmailsPage() {
+  const [searchParams] = useSearchParams();
+  const folderParam = searchParams.get('folder');
+  
+  // Using key forces component remount when folder changes, resetting all state
+  return <EmailsPageContent key={folderParam ?? 'inbox'} folderParam={folderParam} />;
 }

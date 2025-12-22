@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import type { Email, Contact, CalendarEvent, OLMProcessingResult, OLMProcessingProgress } from '../types';
+import type { Email, Contact, CalendarEvent, OLMProcessingResult, OLMProcessingProgress, Account } from '../types';
 import {
   insertEmail,
   insertAccount,
@@ -13,6 +13,7 @@ import {
 } from '../db/database';
 import { accountDetector } from './accountDetector';
 import { purchaseDetector } from './purchaseDetector';
+import { cleanEmailAddress } from '../utils/emailUtils';
 
 export type ProgressCallback = (progress: OLMProcessingProgress) => void;
 
@@ -253,7 +254,7 @@ class OLMParser {
 
       return {
         subject: subject || '(No Subject)',
-        sender: this.cleanEmailAddress(sender),
+        sender: cleanEmailAddress(sender),
         senderName: senderName || undefined,
         recipients,
         date: isNaN(date.getTime()) ? new Date() : date,
@@ -322,7 +323,7 @@ class OLMParser {
         if (email || name !== 'Unknown') {
           contacts.push({
             name,
-            email: this.cleanEmailAddress(email),
+            email: cleanEmailAddress(email),
             phone: phone || undefined,
             emailCount: 0,
             lastEmailDate: new Date(),
@@ -345,7 +346,7 @@ class OLMParser {
         if (email || name) {
           contacts.push({
             name: name || email?.split('@')[0] || 'Unknown',
-            email: this.cleanEmailAddress(email),
+            email: cleanEmailAddress(email),
             phone: undefined,
             emailCount: 0,
             lastEmailDate: new Date(),
@@ -419,6 +420,7 @@ class OLMParser {
           description: description || undefined,
           isAllDay: isAllDayStr === '1' || isAllDayStr?.toLowerCase() === 'true',
           reminder: false,
+          isRead: false, // Mark as unread on import
         });
       });
 
@@ -427,16 +429,6 @@ class OLMParser {
     }
     
     return events;
-  }
-
-  private cleanEmailAddress(email: string): string {
-    if (!email) return '';
-    // Extract email from formats like "Name <email@domain.com>"
-    const match = email.match(/<([^>]+)>/);
-    if (match) {
-      return match[1].trim().toLowerCase();
-    }
-    return email.trim().toLowerCase();
   }
 
   private async runDetection(email: Email, result: OLMProcessingResult): Promise<void> {
@@ -448,7 +440,7 @@ class OLMParser {
         const accountData = accountDetector.createAccountFromEmail(
           email,
           accountResult.data.serviceName,
-          accountResult.data.serviceType as any
+          accountResult.data.serviceType as Account['serviceType']
         );
         await insertAccount(accountData);
         result.accounts++;

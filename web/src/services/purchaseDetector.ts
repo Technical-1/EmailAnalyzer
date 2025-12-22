@@ -1,4 +1,5 @@
 import type { Email, Purchase, DetectionResult } from '../types';
+import { stripHtml, extractDomain } from '../utils/emailUtils';
 
 class PurchaseDetector {
   // Strong subject line patterns for purchases (must be primary purpose)
@@ -188,7 +189,7 @@ class PurchaseDetector {
 
   detectPurchase(email: Email): DetectionResult {
     const subject = email.subject || '';
-    const body = this.stripHtml(email.body || '');
+    const body = stripHtml(email.body || '');
     const sender = email.sender || '';
 
     // Check for anti-patterns first (promotional emails)
@@ -210,7 +211,7 @@ class PurchaseDetector {
     let orderNumber = '';
 
     // Check if sender is from a known merchant
-    const domain = this.extractDomain(sender);
+    const domain = extractDomain(sender);
     const knownMerchant = this.findKnownMerchant(domain);
     if (knownMerchant) {
       merchant = knownMerchant;
@@ -269,22 +270,6 @@ class PurchaseDetector {
     }
 
     return { type: 'none', confidence: 0 };
-  }
-
-  private stripHtml(text: string): string {
-    // Remove HTML tags, CSS, and decode entities
-    return text
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove style tags
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove script tags
-      .replace(/<[^>]+>/g, ' ') // Remove HTML tags
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#\d+;/g, '')
-      .replace(/\s+/g, ' ')
-      .trim();
   }
 
   private extractAmount(text: string): number {
@@ -368,11 +353,6 @@ class PurchaseDetector {
       }
     }
     return true;
-  }
-
-  private extractDomain(email: string): string {
-    const match = email.match(/@(.+)/);
-    return match ? match[1].toLowerCase() : '';
   }
 
   private findKnownMerchant(domain: string): string | null {

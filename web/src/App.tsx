@@ -9,6 +9,7 @@ import { PurchasesPage } from './pages/PurchasesPage';
 import { ContactsPage } from './pages/ContactsPage';
 import { CalendarPage } from './pages/CalendarPage';
 import { SendersPage } from './pages/SendersPage';
+import { SenderEmailsPage } from './pages/SenderEmailsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { useAppStore } from './store';
 
@@ -41,6 +42,7 @@ function AppContent() {
         <Route path="contacts" element={<ContactsPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="senders" element={<SendersPage />} />
+        <Route path="sender/:senderKey" element={<SenderEmailsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

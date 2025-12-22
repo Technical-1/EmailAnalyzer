@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, Building2, Mail, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Building2, Mail, ChevronDown, ChevronRight, Star, Archive, Trash2, X, CheckSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { SearchInput } from '../components/SearchInput';
 import { EmptyState } from '../components/EmptyState';
 import { useAppStore } from '../store';
 import type { Email } from '../types';
+import { SYSTEM_FOLDERS } from '../types';
 
 type GroupMode = 'sender' | 'organization';
 
@@ -18,11 +19,71 @@ interface EmailGroup {
 
 export function SendersPage() {
   const navigate = useNavigate();
-  const { emails } = useAppStore();
+  const { 
+    emails, 
+    toggleEmailStar, 
+    archiveEmail, 
+    archiveEmails, 
+    deleteEmail, 
+    deleteEmails 
+  } = useAppStore();
   const [groupMode, setGroupMode] = useState<GroupMode>('organization');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<'count' | 'name' | 'date'>('count');
+  const [selectedEmails, setSelectedEmails] = useState<Set<number>>(new Set());
+
+  // Selection handlers
+  const toggleEmailSelection = (emailId: number | undefined) => {
+    if (!emailId) return;
+    setSelectedEmails(prev => {
+      const next = new Set(prev);
+      if (next.has(emailId)) {
+        next.delete(emailId);
+      } else {
+        next.add(emailId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllInGroup = (group: EmailGroup) => {
+    setSelectedEmails(prev => {
+      const next = new Set(prev);
+      const groupEmailIds = group.emails.map(e => e.id).filter((id): id is number => id !== undefined);
+      const allSelected = groupEmailIds.every(id => prev.has(id));
+      
+      if (allSelected) {
+        // Deselect all in group
+        groupEmailIds.forEach(id => next.delete(id));
+      } else {
+        // Select all in group
+        groupEmailIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedEmails(new Set());
+  };
+
+  // Bulk actions
+  const handleBulkStar = async () => {
+    for (const id of selectedEmails) {
+      await toggleEmailStar(id);
+    }
+  };
+
+  const handleBulkArchive = async () => {
+    await archiveEmails(Array.from(selectedEmails));
+    clearSelection();
+  };
+
+  const handleBulkDelete = async () => {
+    await deleteEmails(Array.from(selectedEmails));
+    clearSelection();
+  };
 
   // Group emails by sender or organization
   const groupedEmails = useMemo(() => {
@@ -249,30 +310,102 @@ export function SendersPage() {
               {/* Expanded Emails */}
               {expandedGroups.has(group.key) && (
                 <div className="border-t border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {group.emails.slice(0, 10).map(email => (
-                    <button
-                      key={email.id}
-                      onClick={() => navigate(`/emails/${email.id}`)}
-                      className="w-full px-5 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors text-left"
-                    >
-                      <Mail className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className={`truncate ${email.isRead ? 'text-slate-600 dark:text-slate-300' : 'font-semibold text-slate-900 dark:text-white'}`}>
-                          {email.subject || '(No Subject)'}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                          {email.sender}
-                        </p>
+                  {/* Select all in group header */}
+                  <div className="px-5 py-2 bg-slate-50 dark:bg-slate-700/50 flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={group.emails.every(e => e.id && selectedEmails.has(e.id))}
+                      onChange={() => selectAllInGroup(group)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500"
+                    />
+                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                      Select all in {group.displayName}
+                    </span>
+                  </div>
+                  
+                  {group.emails.slice(0, 10).map(email => {
+                    const isSelected = email.id ? selectedEmails.has(email.id) : false;
+                    const isInTrash = email.folderId === SYSTEM_FOLDERS.TRASH;
+                    const isInArchive = email.folderId === SYSTEM_FOLDERS.ARCHIVE;
+                    
+                    return (
+                      <div
+                        key={email.id}
+                        className={`group/row px-5 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors ${
+                          isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                        }`}
+                      >
+                        {/* Checkbox */}
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleEmailSelection(email.id)}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-500 focus:ring-blue-500"
+                        />
+                        
+                        {/* Email content - clickable */}
+                        <button
+                          onClick={() => navigate(`/emails/${email.id}`)}
+                          className="flex-1 min-w-0 flex items-center gap-3 text-left"
+                        >
+                          <Mail className={`w-4 h-4 flex-shrink-0 ${email.isRead ? 'text-slate-400' : 'text-blue-500'}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className={`truncate ${email.isRead ? 'text-slate-600 dark:text-slate-300' : 'font-semibold text-slate-900 dark:text-white'}`}>
+                              {email.subject || '(No Subject)'}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                              {email.sender}
+                            </p>
+                          </div>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
+                            {format(email.date, 'MMM d, yyyy')}
+                          </span>
+                        </button>
+                        
+                        {/* Quick actions */}
+                        <div className="flex items-center gap-1 opacity-0 group-hover/row:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (email.id) toggleEmailStar(email.id);
+                            }}
+                            className="p-1.5 hover:bg-yellow-100 dark:hover:bg-yellow-900/30 rounded transition-colors"
+                            title={email.isStarred ? 'Remove star' : 'Add star'}
+                          >
+                            <Star className={`w-4 h-4 ${email.isStarred ? 'text-yellow-500 fill-yellow-500' : 'text-slate-400 hover:text-yellow-500'}`} />
+                          </button>
+                          
+                          {!isInArchive && !isInTrash && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (email.id) archiveEmail(email.id);
+                              }}
+                              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-600 rounded transition-colors"
+                              title="Archive"
+                            >
+                              <Archive className="w-4 h-4 text-slate-400 hover:text-blue-500" />
+                            </button>
+                          )}
+                          
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (email.id) deleteEmail(email.id);
+                            }}
+                            className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 rounded transition-colors"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4 text-slate-400 hover:text-red-500" />
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-                        {format(email.date, 'MMM d, yyyy')}
-                      </span>
-                    </button>
-                  ))}
+                    );
+                  })}
                   {group.emails.length > 10 && (
                     <div className="px-5 py-3 text-center">
                       <button
-                        onClick={() => navigate(`/emails?search=${encodeURIComponent(group.key)}`)}
+                        onClick={() => navigate(`/sender/${encodeURIComponent(group.key)}`)}
                         className="text-sm text-blue-500 hover:text-blue-600"
                       >
                         View all {group.emails.length} emails →
@@ -298,6 +431,57 @@ export function SendersPage() {
           title="No Results"
           description="Try a different search term."
         />
+      )}
+
+      {/* Bulk Action Bar */}
+      {selectedEmails.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="bg-slate-900 dark:bg-slate-700 text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-blue-400" />
+              <span className="font-medium">{selectedEmails.size} selected</span>
+            </div>
+            
+            <div className="h-6 w-px bg-slate-600" />
+            
+            <button
+              onClick={handleBulkStar}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              title="Star selected"
+            >
+              <Star className="w-4 h-4 text-yellow-400" />
+              <span className="text-sm">Star</span>
+            </button>
+            
+            <button
+              onClick={handleBulkArchive}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              title="Archive selected"
+            >
+              <Archive className="w-4 h-4 text-blue-400" />
+              <span className="text-sm">Archive</span>
+            </button>
+            
+            <button
+              onClick={handleBulkDelete}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-red-600 rounded-lg transition-colors"
+              title="Delete selected"
+            >
+              <Trash2 className="w-4 h-4 text-red-400" />
+              <span className="text-sm">Delete</span>
+            </button>
+            
+            <div className="h-6 w-px bg-slate-600" />
+            
+            <button
+              onClick={clearSelection}
+              className="p-1.5 hover:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors"
+              title="Clear selection"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

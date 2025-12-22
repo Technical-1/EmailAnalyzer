@@ -60,6 +60,8 @@ export interface Contact {
   name: string;
   email: string;
   phone?: string;
+  notes?: string;
+  tags?: string[];
   emailCount: number;
   lastEmailDate: Date;
 }
@@ -75,24 +77,25 @@ export interface CalendarEvent {
   description?: string;
   isAllDay: boolean;
   reminder?: boolean;
+  isRead: boolean;
 }
 
-// Email grouping
-export interface EmailGroup {
-  title: string;
-  emails: Email[];
-  count: number;
+// Folder types
+export interface Folder {
+  id: string;
+  name: string;
+  icon?: string;
+  isSystem: boolean; // System folders (inbox, archive, trash) can't be deleted
+  color?: string;
+  createdAt: Date;
 }
 
-// Export options
-export interface ExportOptions {
-  format: 'mbox' | 'eml' | 'csv' | 'json';
-  includeAttachments?: boolean;
-  dateRange?: {
-    start: Date;
-    end: Date;
-  };
-}
+// Default system folders
+export const SYSTEM_FOLDERS = {
+  INBOX: 'inbox',
+  ARCHIVE: 'archive',
+  TRASH: 'trash',
+} as const;
 
 // OLM processing
 export interface OLMProcessingResult {
