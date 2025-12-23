@@ -39,13 +39,14 @@ export function AnalyticsPage() {
     const recentEmails = filteredEmails.filter(e => new Date(e.date) >= thirtyDaysAgo);
     const uniqueSenders = new Set(filteredEmails.map(e => e.sender)).size;
 
-    // Calculate date range for avg emails/day
+    // Calculate date range for avg emails/day (inclusive of both start and end days)
     let dateRange = 1;
     if (filteredEmails.length > 0) {
       const sortedDates = filteredEmails.map(e => new Date(e.date).getTime()).sort((a, b) => a - b);
       const oldestDate = sortedDates[0];
       const newestDate = sortedDates[sortedDates.length - 1];
-      dateRange = Math.max(1, Math.ceil((newestDate - oldestDate) / (1000 * 60 * 60 * 24)));
+      // Add 1 for inclusive counting: emails from Jan 1 to Jan 2 span 2 calendar days
+      dateRange = Math.max(1, Math.floor((newestDate - oldestDate) / (1000 * 60 * 60 * 24)) + 1);
     }
     
     return {

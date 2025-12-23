@@ -118,7 +118,7 @@ function VirtualizedThreadContent({
         const thread = threads[virtualItem.index];
         return (
           <div
-            key={virtualItem.key}
+            key={thread.id}
             data-index={virtualItem.index}
             ref={virtualizer.measureElement}
             style={{
