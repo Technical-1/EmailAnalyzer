@@ -379,6 +379,44 @@ export const createFolder = async (folder: Folder): Promise<void> => {
   });
 };
 
+/**
+ * Create a folder if it doesn't already exist
+ * Returns true if created, false if already existed
+ */
+export const ensureFolderExists = async (folderId: string, folderName?: string): Promise<boolean> => {
+  const existing = await db.folders.get(folderId);
+  if (existing) return false;
+  
+  // Create the folder
+  await db.folders.add({
+    id: folderId,
+    name: folderName || folderId.charAt(0).toUpperCase() + folderId.slice(1).replace(/-/g, ' '),
+    isSystem: ['inbox', 'sent', 'drafts', 'spam', 'archive', 'trash'].includes(folderId),
+    createdAt: Date.now(),
+  });
+  
+  return true;
+};
+
+/**
+ * Ensure multiple folders exist (for batch import)
+ */
+export const ensureFoldersExist = async (folderIds: string[]): Promise<void> => {
+  const existingFolders = await db.folders.toArray();
+  const existingIds = new Set(existingFolders.map(f => f.id));
+  
+  const foldersToCreate = folderIds.filter(id => !existingIds.has(id));
+  
+  for (const folderId of foldersToCreate) {
+    await db.folders.add({
+      id: folderId,
+      name: folderId.charAt(0).toUpperCase() + folderId.slice(1).replace(/-/g, ' '),
+      isSystem: ['inbox', 'sent', 'drafts', 'spam', 'archive', 'trash'].includes(folderId),
+      createdAt: Date.now(),
+    });
+  }
+};
+
 export const deleteFolder = async (id: string): Promise<void> => {
   // Move all emails from this folder back to inbox before deleting
   const emails = await db.emails.where('folderId').equals(id).toArray();
@@ -398,13 +436,20 @@ const dbFolderToFolder = (dbFolder: DBFolder): Folder => ({
 // Initialize default system folders
 export const initializeSystemFolders = async (): Promise<void> => {
   const existingFolders = await db.folders.toArray();
-  const systemFolderIds = ['inbox', 'archive', 'trash'];
+  const systemFolders = [
+    { id: 'inbox', name: 'Inbox' },
+    { id: 'sent', name: 'Sent' },
+    { id: 'drafts', name: 'Drafts' },
+    { id: 'spam', name: 'Spam' },
+    { id: 'archive', name: 'Archive' },
+    { id: 'trash', name: 'Trash' },
+  ];
   
-  for (const folderId of systemFolderIds) {
-    if (!existingFolders.find(f => f.id === folderId)) {
+  for (const folder of systemFolders) {
+    if (!existingFolders.find(f => f.id === folder.id)) {
       await db.folders.add({
-        id: folderId,
-        name: folderId.charAt(0).toUpperCase() + folderId.slice(1),
+        id: folder.id,
+        name: folder.name,
         isSystem: true,
         createdAt: Date.now(),
       });

@@ -23,14 +23,15 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
   const validateFile = (file: File): boolean => {
     setError(null);
 
-    if (!file.name.toLowerCase().endsWith('.olm')) {
-      setError('Please select a valid .olm file');
-      return false;
-    }
+    const fileName = file.name.toLowerCase();
+    const isValidFormat = 
+      fileName.endsWith('.olm') || 
+      fileName.endsWith('.mbox') || 
+      fileName.endsWith('.mbx') ||
+      fileName.endsWith('.zip');
 
-    // Max 2GB
-    if (file.size > 2 * 1024 * 1024 * 1024) {
-      setError('File size exceeds 2GB limit');
+    if (!isValidFormat) {
+      setError('Please select a valid email archive file (.olm, .mbox, .mbx, or .zip)');
       return false;
     }
 
@@ -71,7 +72,7 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
       >
         <input
           type="file"
-          accept=".olm"
+          accept=".olm,.mbox,.mbx,.zip"
           onChange={handleFileInput}
           disabled={isProcessing}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
@@ -86,7 +87,7 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
 
           <div>
             <p className="text-lg font-medium text-slate-700 dark:text-slate-200">
-              {isDragging ? 'Drop your OLM file here' : 'Drag & drop your OLM file'}
+              {isDragging ? 'Drop your email archive here' : 'Drag & drop your email archive'}
             </p>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               or click to browse
@@ -94,7 +95,7 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
           </div>
 
           <div className="text-xs text-slate-400 dark:text-slate-500">
-            Outlook for Mac archive files (.olm) up to 2GB
+            Supports .olm (Outlook), .mbox/.mbx (Gmail/Thunderbird), or .zip (Gmail Takeout)
           </div>
         </div>
       </div>

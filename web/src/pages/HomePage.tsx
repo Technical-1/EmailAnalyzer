@@ -9,9 +9,34 @@ import { FileDropzone } from '../components/FileDropzone';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatsCard } from '../components/StatsCard';
 import { olmParser, type ProgressCallback } from '../services/olmParser';
+import { mboxParser } from '../services/mboxParser';
+import { gmailTakeoutParser } from '../services/gmailTakeoutParser';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import type { OLMProcessingProgress, OLMProcessingResult } from '../types';
+import {
+  insertEmail,
+  insertAccount,
+  insertPurchase,
+  findDuplicatePurchase,
+  insertContact,
+  getAccountByServiceName,
+  getContactByEmail,
+  updateContactEmailCount,
+  insertSubscription,
+  getSubscriptionByServiceName,
+  updateSubscription,
+  insertNewsletter,
+  getNewsletterBySender,
+  updateNewsletter,
+  ensureFoldersExist,
+} from '../db/database';
+import { accountDetector } from '../services/accountDetector';
+import { purchaseDetector } from '../services/purchaseDetector';
+import { subscriptionDetector } from '../services/subscriptionDetector';
+import { newsletterDetector } from '../services/newsletterDetector';
+import { extractDomain } from '../utils/emailUtils';
+import type { Email, Account, Subscription, Newsletter } from '../types';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -33,7 +58,23 @@ export function HomePage() {
         setProgress(p);
       };
 
-      const processingResult = await olmParser.parseOLMFile(file, progressCallback);
+      let processingResult: OLMProcessingResult;
+
+      // Detect file type and route to appropriate parser
+      const fileName = file.name.toLowerCase();
+      if (fileName.endsWith('.olm')) {
+        // OLM file - use existing parser
+        processingResult = await olmParser.parseOLMFile(file, progressCallback);
+      } else if (gmailTakeoutParser.isGmailTakeout(file)) {
+        // Gmail Takeout ZIP file
+        processingResult = await processGmailTakeout(file, progressCallback);
+      } else if (fileName.endsWith('.mbox') || fileName.endsWith('.mbx')) {
+        // MBOX file
+        processingResult = await processMBOXFile(file, progressCallback);
+      } else {
+        throw new Error('Unsupported file format. Please use .olm, .mbox, .mbx, or Gmail Takeout .zip files.');
+      }
+
       setResult(processingResult);
       
       // Refresh the store with new data
@@ -42,6 +83,301 @@ export function HomePage() {
       setError(err instanceof Error ? err.message : 'Failed to process file');
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  // Helper function to process MBOX files using streaming for large file support
+  const processMBOXFile = async (
+    file: File,
+    onProgress: ProgressCallback
+  ): Promise<OLMProcessingResult> => {
+    const result: OLMProcessingResult = {
+      emails: 0,
+      contacts: 0,
+      calendarEvents: 0,
+      accounts: 0,
+      purchases: 0,
+      subscriptions: 0,
+      newsletters: 0,
+    };
+
+    // Track all unique folder IDs to create them
+    const folderIds = new Set<string>();
+
+    onProgress({
+      stage: 'extracting',
+      progress: 0,
+      message: 'Reading MBOX file...',
+    });
+
+    // Process emails in batches as they're parsed (memory efficient)
+    const processBatch = async (emails: Omit<Email, 'id'>[], batchNumber: number) => {
+      for (const emailData of emails) {
+        try {
+          // Track folder ID
+          if (emailData.folderId) {
+            folderIds.add(emailData.folderId);
+          }
+          
+          const emailId = await insertEmail(emailData);
+          result.emails++;
+          
+          // Run detection on every 5th email to save time on large imports
+          if (result.emails % 5 === 0) {
+            const email: Email = { ...emailData, id: emailId };
+            await runDetection(email, result);
+          }
+          
+          // Track contacts for every 10th email
+          if (result.emails % 10 === 0) {
+            const newContact = await trackContact(emailData);
+            if (newContact) {
+              result.contacts++;
+            }
+          }
+        } catch (err) {
+          console.warn('Error processing email:', err);
+        }
+      }
+      
+      onProgress({
+        stage: 'parsing_emails',
+        progress: Math.min(95, 10 + batchNumber * 2),
+        message: `Saved ${result.emails} emails...`,
+      });
+    };
+
+    // Adapt progress callback
+    const adaptedProgress = (progress: number, message: string) => {
+      onProgress({
+        stage: progress < 95 ? 'parsing_emails' : 'saving',
+        progress,
+        message,
+      });
+    };
+
+    // Use streaming parser - processes in batches, doesn't hold all emails in memory
+    await mboxParser.parseMBOXFileStreaming(file, adaptedProgress, processBatch);
+
+    // Create any folders that were found during import
+    if (folderIds.size > 0) {
+      onProgress({
+        stage: 'saving',
+        progress: 98,
+        message: `Creating ${folderIds.size} folders...`,
+      });
+      await ensureFoldersExist(Array.from(folderIds));
+    }
+
+    onProgress({
+      stage: 'saving',
+      progress: 100,
+      message: `Import complete! ${result.emails} emails processed.`,
+    });
+
+    return result;
+  };
+
+  // Helper function to process Gmail Takeout files
+  const processGmailTakeout = async (
+    file: File,
+    onProgress: ProgressCallback
+  ): Promise<OLMProcessingResult> => {
+    const result: OLMProcessingResult = {
+      emails: 0,
+      contacts: 0,
+      calendarEvents: 0,
+      accounts: 0,
+      purchases: 0,
+      subscriptions: 0,
+      newsletters: 0,
+    };
+
+    // Adapt progress callback
+    const adaptedProgress = (progress: number, message: string) => {
+      let stage: OLMProcessingProgress['stage'] = 'parsing_emails';
+      if (progress < 20) stage = 'extracting';
+      else if (progress < 80) stage = 'parsing_emails';
+      else if (progress < 95) stage = 'detecting';
+      else stage = 'saving';
+
+      onProgress({
+        stage,
+        progress,
+        message,
+      });
+    };
+
+    const parsedEmails = await gmailTakeoutParser.parseGmailTakeout(file, adaptedProgress);
+
+    onProgress({
+      stage: 'parsing_emails',
+      progress: 50,
+      message: `Found ${parsedEmails.length} emails, saving...`,
+    });
+
+    // Save emails and run detection
+    for (let i = 0; i < parsedEmails.length; i++) {
+      const emailData = parsedEmails[i];
+      const emailId = await insertEmail(emailData);
+      result.emails++;
+      const email: Email = { ...emailData, id: emailId };
+
+      // Run detection
+      await runDetection(email, result);
+
+      // Track contacts
+      const newContact = await trackContact(emailData);
+      if (newContact) {
+        result.contacts++;
+      }
+
+      if (i % 100 === 0 || i === parsedEmails.length - 1) {
+        onProgress({
+          stage: 'parsing_emails',
+          progress: 50 + Math.round((i + 1) / parsedEmails.length * 40),
+          message: `Processed ${i + 1} of ${parsedEmails.length} emails`,
+        });
+      }
+    }
+
+    onProgress({
+      stage: 'saving',
+      progress: 100,
+      message: 'Processing complete!',
+    });
+
+    return result;
+  };
+
+  // Helper function to run detection on an email (reused from olmParser logic)
+  const runDetection = async (email: Email, result: OLMProcessingResult): Promise<void> => {
+    // Detect account signups
+    const accountResult = accountDetector.detectAccountSignup(email);
+    if (accountResult.type === 'account' && accountResult.data?.serviceName) {
+      const existingAccount = await getAccountByServiceName(accountResult.data.serviceName);
+      if (!existingAccount) {
+        const accountData = accountDetector.createAccountFromEmail(
+          email,
+          accountResult.data.serviceName,
+          accountResult.data.serviceType as Account['serviceType']
+        );
+        await insertAccount(accountData);
+        result.accounts++;
+      }
+    }
+
+    // Detect purchases
+    const purchaseResult = purchaseDetector.detectPurchase(email);
+    if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount) {
+      const merchant = purchaseResult.data.merchant || 'Unknown';
+      const amount = purchaseResult.data.amount;
+      const orderNumber = purchaseResult.data.orderNumber;
+      
+      const existingPurchase = await findDuplicatePurchase(
+        merchant,
+        amount,
+        email.date,
+        orderNumber
+      );
+      
+      if (!existingPurchase) {
+        const purchaseData = purchaseDetector.createPurchaseFromEmail(
+          email,
+          merchant,
+          amount,
+          orderNumber
+        );
+        await insertPurchase(purchaseData);
+        result.purchases++;
+      }
+    }
+
+    // Detect subscriptions
+    const subResult = subscriptionDetector.detectSubscription(email);
+    if (subResult.isSubscription && subResult.serviceName) {
+      const senderDomain = extractDomain(email.sender);
+      
+      let existingSub = await getSubscriptionByServiceName(subResult.serviceName);
+      if (!existingSub && senderDomain) {
+        existingSub = await getSubscriptionByServiceName(senderDomain);
+      }
+      
+      if (existingSub) {
+        const emailIds = [...new Set([...existingSub.emailIds, email.id!])];
+        const isNewerEmail = email.date > existingSub.lastRenewalDate;
+        const shouldUpdateAmount = isNewerEmail && subResult.amount && subResult.amount > 0;
+        
+        await updateSubscription(existingSub.id!, {
+          emailIds,
+          lastRenewalDate: isNewerEmail ? email.date : existingSub.lastRenewalDate,
+          monthlyAmount: shouldUpdateAmount ? subResult.amount : existingSub.monthlyAmount,
+          frequency: (isNewerEmail && subResult.frequency) ? subResult.frequency : existingSub.frequency,
+        });
+      } else {
+        const newSub: Omit<Subscription, 'id'> = {
+          serviceName: subResult.serviceName,
+          monthlyAmount: subResult.amount || 0,
+          currency: subResult.currency || 'USD',
+          frequency: subResult.frequency || 'monthly',
+          lastRenewalDate: email.date,
+          emailIds: [email.id!],
+          isActive: true,
+          category: subResult.category || 'other',
+        };
+        await insertSubscription(newSub);
+        result.subscriptions++;
+      }
+    }
+
+    // Detect newsletters/promotional emails
+    const nlResult = newsletterDetector.detectNewsletter(email);
+    if (nlResult.isNewsletter || nlResult.isPromotional) {
+      const existingNL = await getNewsletterBySender(email.sender);
+      if (existingNL) {
+        await updateNewsletter(existingNL.id!, {
+          emailCount: existingNL.emailCount + 1,
+          lastEmailDate: email.date > existingNL.lastEmailDate ? email.date : existingNL.lastEmailDate,
+          unsubscribeLink: nlResult.unsubscribeLink || existingNL.unsubscribeLink,
+        });
+      } else {
+        const newNL: Omit<Newsletter, 'id'> = {
+          senderEmail: email.sender,
+          senderName: email.senderName || email.sender.split('@')[0],
+          emailCount: 1,
+          lastEmailDate: email.date,
+          unsubscribeLink: nlResult.unsubscribeLink,
+          isPromotional: nlResult.isPromotional,
+        };
+        await insertNewsletter(newNL);
+        result.newsletters++;
+      }
+    }
+  };
+
+  // Helper function to track contacts
+  const trackContact = async (email: Omit<Email, 'id'>): Promise<boolean> => {
+    const senderEmail = email.sender;
+    if (!senderEmail || senderEmail === 'unknown@example.com') return false;
+
+    const existingContact = await getContactByEmail(senderEmail);
+    if (existingContact) {
+      await updateContactEmailCount(
+        senderEmail,
+        existingContact.emailCount + 1,
+        email.date
+      );
+      return false;
+    } else {
+      const senderName = email.senderName || senderEmail.split('@')[0] || 'Unknown';
+      await insertContact({
+        name: senderName,
+        email: senderEmail,
+        phone: undefined,
+        emailCount: 1,
+        lastEmailDate: email.date,
+      });
+      return true;
     }
   };
 
@@ -64,7 +400,7 @@ export function HomePage() {
           </p>
           <div className="flex flex-wrap justify-center gap-3 text-sm">
             <span className="px-3 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
-              📁 Works with .OLM files
+              📁 Works with .OLM, .MBOX, .MBX files
             </span>
             <span className="px-3 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full">
               🔒 100% Offline & Private
@@ -113,25 +449,50 @@ export function HomePage() {
         {/* Instructions */}
         <div className="mt-16 max-w-2xl mx-auto">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-6 text-center">
-            How to export your OLM file
+            Supported Email Formats
           </h2>
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-            <ol className="space-y-4">
-              {[
-                'Open Outlook for Mac',
-                'Go to File → Export',
-                'Select "Outlook for Mac Data File (.olm)"',
-                'Choose what to export and save the file',
-                'Drag the .olm file above to analyze it',
-              ].map((step, i) => (
-                <li key={i} className="flex gap-4 items-center">
-                  <span className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold flex items-center justify-center">
-                    {i + 1}
-                  </span>
-                  <span className="text-slate-600 dark:text-slate-300">{step}</span>
-                </li>
-              ))}
-            </ol>
+          <div className="space-y-4">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-3">📧 Outlook for Mac (.olm)</h3>
+              <ol className="space-y-2 ml-6 list-decimal">
+                {[
+                  'Open Outlook for Mac',
+                  'Go to File → Export',
+                  'Select "Outlook for Mac Data File (.olm)"',
+                  'Choose what to export and save the file',
+                  'Drag the .olm file above to analyze it',
+                ].map((step, i) => (
+                  <li key={i} className="text-slate-600 dark:text-slate-300 text-sm">{step}</li>
+                ))}
+              </ol>
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-3">📬 Gmail Takeout (.zip)</h3>
+              <ol className="space-y-2 ml-6 list-decimal">
+                {[
+                  'Go to takeout.google.com',
+                  'Deselect all, then select only "Mail"',
+                  'Choose MBOX format',
+                  'Create and download the export',
+                  'Extract the ZIP and import the .mbox files, or upload the ZIP directly',
+                ].map((step, i) => (
+                  <li key={i} className="text-slate-600 dark:text-slate-300 text-sm">{step}</li>
+                ))}
+              </ol>
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-3">📮 Thunderbird (.mbox)</h3>
+              <ol className="space-y-2 ml-6 list-decimal">
+                {[
+                  'Install the ImportExportTools NG add-on',
+                  'Right-click a folder → Export folder as MBOX',
+                  'Save the file',
+                  'Import the .mbox file above',
+                ].map((step, i) => (
+                  <li key={i} className="text-slate-600 dark:text-slate-300 text-sm">{step}</li>
+                ))}
+              </ol>
+            </div>
           </div>
         </div>
       </div>
@@ -341,13 +702,13 @@ export function HomePage() {
             <Upload className="w-8 h-8 text-slate-400" />
             <div>
               <h3 className="font-medium text-slate-900 dark:text-white">Import more emails</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Add another OLM or MBOX file to your collection</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Add another email archive (.olm, .mbox, .mbx, or .zip) to your collection</p>
             </div>
           </div>
           <label className="px-4 py-2 bg-white dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200 font-medium cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors">
             <input
               type="file"
-              accept=".olm,.mbox,.mbx"
+              accept=".olm,.mbox,.mbx,.zip"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];

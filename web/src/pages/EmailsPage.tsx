@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star, Zap, MessageSquare, List } from 'lucide-react';
+import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star, Zap, MessageSquare, List, Send, FileText, AlertTriangle, Folder } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
@@ -48,20 +48,41 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
   // Special handling for favorites (starred emails across all folders)
   const isFavorites = folderParam === 'favorites';
 
-  // Determine current folder
-  const currentFolder = folderParam === 'archive' ? SYSTEM_FOLDERS.ARCHIVE 
-    : folderParam === 'trash' ? SYSTEM_FOLDERS.TRASH 
+  // Determine current folder - use folderParam directly if provided, else inbox
+  const currentFolder = folderParam && folderParam !== 'favorites' 
+    ? folderParam 
     : SYSTEM_FOLDERS.INBOX;
 
-  const folderTitle = isFavorites ? 'Favorites'
-    : currentFolder === SYSTEM_FOLDERS.ARCHIVE ? 'Archive' 
-    : currentFolder === SYSTEM_FOLDERS.TRASH ? 'Trash' 
-    : 'Inbox';
+  // Get folder title - capitalize first letter of each word
+  const getFolderTitle = () => {
+    if (isFavorites) return 'Favorites';
+    if (!folderParam) return 'Inbox';
+    // Handle system folders
+    if (folderParam === 'inbox') return 'Inbox';
+    if (folderParam === 'sent') return 'Sent';
+    if (folderParam === 'drafts') return 'Drafts';
+    if (folderParam === 'spam') return 'Spam';
+    if (folderParam === 'archive') return 'Archive';
+    if (folderParam === 'trash') return 'Trash';
+    // Custom folders - capitalize and replace dashes with spaces
+    return folderParam
+      .replace(/-/g, ' ')
+      .replace(/\b\w/g, c => c.toUpperCase());
+  };
+  const folderTitle = getFolderTitle();
 
-  const FolderIcon = isFavorites ? Star
-    : currentFolder === SYSTEM_FOLDERS.ARCHIVE ? Archive 
-    : currentFolder === SYSTEM_FOLDERS.TRASH ? Trash2 
-    : Inbox;
+  // Get folder icon
+  const getFolderIcon = () => {
+    if (isFavorites) return Star;
+    if (currentFolder === 'sent') return Send;
+    if (currentFolder === 'drafts') return FileText;
+    if (currentFolder === 'spam') return AlertTriangle;
+    if (currentFolder === 'archive') return Archive;
+    if (currentFolder === 'trash') return Trash2;
+    if (currentFolder === 'inbox' || !folderParam) return Inbox;
+    return Folder; // Custom folders
+  };
+  const FolderIcon = getFolderIcon();
 
   // Filter, search, and sort emails
   const processedEmails = useMemo(() => {

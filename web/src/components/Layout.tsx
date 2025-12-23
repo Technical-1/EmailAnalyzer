@@ -4,6 +4,7 @@ import {
   Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2, 
   Archive, Trash2, Star, BarChart3, RefreshCw, Newspaper, Paperclip, Shield,
   ChevronDown, ChevronRight, Home, Inbox, TrendingUp, Folder, Wrench,
+  Send, FileText, AlertTriangle,
   type LucideIcon
 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -27,19 +28,19 @@ interface NavSection {
   defaultOpen?: boolean;
 }
 
-const navSections: NavSection[] = [
-  {
-    id: 'mail',
-    label: 'Mail',
-    icon: Inbox,
-    defaultOpen: true,
-    items: [
-      { to: '/emails', icon: Mail, label: 'Inbox', folder: null },
-      { to: '/emails?folder=favorites', icon: Star, label: 'Favorites', folder: 'favorites' },
-      { to: '/emails?folder=archive', icon: Archive, label: 'Archive', folder: 'archive' },
-      { to: '/emails?folder=trash', icon: Trash2, label: 'Trash', folder: 'trash' },
-    ],
-  },
+// Icon mapping for system folders
+const folderIcons: Record<string, LucideIcon> = {
+  inbox: Inbox,
+  sent: Send,
+  drafts: FileText,
+  spam: AlertTriangle,
+  archive: Archive,
+  trash: Trash2,
+  favorites: Star,
+};
+
+// Base sections (non-mail)
+const staticSections: NavSection[] = [
   {
     id: 'insights',
     label: 'Insights',
@@ -78,17 +79,79 @@ const navSections: NavSection[] = [
 ];
 
 export function Layout() {
-  const { emails } = useAppStore();
+  const { emails, folders } = useAppStore();
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const currentFolder = searchParams.get('folder');
   
+  // Build mail section dynamically from folders
+  const buildMailItems = (): NavItem[] => {
+    const items: NavItem[] = [];
+    
+    // Always show Inbox first (folder: null means inbox)
+    items.push({ to: '/emails', icon: Inbox, label: 'Inbox', folder: null });
+    
+    // Always show Favorites (based on isStarred flag)
+    items.push({ to: '/emails?folder=favorites', icon: Star, label: 'Favorites', folder: 'favorites' });
+    
+    // Add system folders in order: Sent, Drafts, Spam
+    const systemOrder = ['sent', 'drafts', 'spam'];
+    for (const folderId of systemOrder) {
+      const folder = folders.find(f => f.id === folderId);
+      if (folder) {
+        const count = emails.filter(e => e.folderId === folderId).length;
+        if (count > 0) { // Only show if has emails
+          items.push({
+            to: `/emails?folder=${folderId}`,
+            icon: folderIcons[folderId] || Folder,
+            label: folder.name,
+            folder: folderId,
+          });
+        }
+      }
+    }
+    
+    // Add custom folders (non-system)
+    const customFolders = folders.filter(f => 
+      !f.isSystem && 
+      !['inbox', 'sent', 'drafts', 'spam', 'archive', 'trash'].includes(f.id)
+    );
+    for (const folder of customFolders) {
+      const count = emails.filter(e => e.folderId === folder.id).length;
+      if (count > 0) { // Only show if has emails
+        items.push({
+          to: `/emails?folder=${folder.id}`,
+          icon: Folder,
+          label: folder.name,
+          folder: folder.id,
+        });
+      }
+    }
+    
+    // Add Archive and Trash at the end
+    items.push({ to: '/emails?folder=archive', icon: Archive, label: 'Archive', folder: 'archive' });
+    items.push({ to: '/emails?folder=trash', icon: Trash2, label: 'Trash', folder: 'trash' });
+    
+    return items;
+  };
+
+  // Build nav sections with dynamic mail section
+  const navSections: NavSection[] = [
+    {
+      id: 'mail',
+      label: 'Mail',
+      icon: Inbox,
+      defaultOpen: true,
+      items: buildMailItems(),
+    },
+    ...staticSections,
+  ];
+  
   // Track which sections are open
   const [openSections, setOpenSections] = useState<Set<string>>(() => {
     const defaultOpen = new Set<string>();
-    navSections.forEach(section => {
-      if (section.defaultOpen) defaultOpen.add(section.id);
-    });
+    defaultOpen.add('mail');
+    defaultOpen.add('insights');
     return defaultOpen;
   });
 
@@ -104,13 +167,13 @@ export function Layout() {
     });
   };
   
+  // Get email count for any folder
   const getCounts = (folder?: string | null) => {
     if (folder === undefined) return null;
     if (folder === null) return emails.filter(e => e.folderId === SYSTEM_FOLDERS.INBOX).length;
     if (folder === 'favorites') return emails.filter(e => e.isStarred).length;
-    if (folder === 'archive') return emails.filter(e => e.folderId === SYSTEM_FOLDERS.ARCHIVE).length;
-    if (folder === 'trash') return emails.filter(e => e.folderId === SYSTEM_FOLDERS.TRASH).length;
-    return null;
+    // For any other folder, count emails in that folder
+    return emails.filter(e => e.folderId === folder).length;
   };
   
   // Custom active check that considers both path and query params

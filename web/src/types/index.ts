@@ -93,6 +93,9 @@ export interface Folder {
 // Default system folders
 export const SYSTEM_FOLDERS = {
   INBOX: 'inbox',
+  SENT: 'sent',
+  DRAFTS: 'drafts',
+  SPAM: 'spam',
   ARCHIVE: 'archive',
   TRASH: 'trash',
 } as const;
