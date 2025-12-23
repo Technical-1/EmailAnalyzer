@@ -1,20 +1,32 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { format } from 'date-fns';
 import { 
   RefreshCw, 
   DollarSign, 
   Calendar, 
   CheckCircle,
-  Search
+  Search,
+  ChevronRight,
+  Mail,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { EmptyState } from '../components/EmptyState';
+import type { Subscription, Email } from '../types';
 
 export function SubscriptionsPage() {
   const { subscriptions, emails } = useAppStore();
   const [filter, setFilter] = useState<'all' | 'active' | 'cancelled'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
+
+  // Get emails for a subscription
+  const getSubscriptionEmails = (sub: Subscription): Email[] => {
+    return emails.filter(e => sub.emailIds.includes(e.id!));
+  };
 
   // Filter subscriptions
   const filteredSubscriptions = useMemo(() => {
@@ -69,6 +81,8 @@ export function SubscriptionsPage() {
     );
   }
 
+  const selectedEmails = selectedSubscription ? getSubscriptionEmails(selectedSubscription) : [];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -104,20 +118,22 @@ export function SubscriptionsPage() {
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2 text-blue-500 text-sm">
             <DollarSign className="w-4 h-4" />
-            Monthly
+            Monthly Cost
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
             ${totals.monthlySpend.toFixed(2)}
           </div>
+          <div className="text-xs text-slate-400 mt-0.5">all services combined</div>
         </div>
         <div className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center gap-2 text-purple-500 text-sm">
             <Calendar className="w-4 h-4" />
-            Yearly
+            Annual Cost
           </div>
           <div className="text-2xl font-bold text-slate-900 dark:text-white mt-1">
             ${totals.yearlySpend.toFixed(2)}
           </div>
+          <div className="text-xs text-slate-400 mt-0.5">projected</div>
         </div>
       </div>
 
@@ -158,30 +174,34 @@ export function SubscriptionsPage() {
       {filteredSubscriptions.length > 0 ? (
         <div className="space-y-3">
           {filteredSubscriptions.map((sub) => (
-            <div
+            <button
               key={sub.id}
-              className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 flex items-center gap-4"
+              onClick={() => setSelectedSubscription(sub)}
+              className="w-full text-left bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all flex items-center gap-4"
             >
-              <div className="flex-1">
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg flex-shrink-0">
+                {sub.serviceName.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-slate-900 dark:text-white">
+                  <h3 className="font-semibold text-slate-900 dark:text-white truncate">
                     {sub.serviceName}
                   </h3>
                   {sub.isActive ? (
-                    <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs rounded-full">
+                    <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs rounded-full flex-shrink-0">
                       Active
                     </span>
                   ) : (
-                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs rounded-full">
+                    <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs rounded-full flex-shrink-0">
                       Cancelled
                     </span>
                   )}
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  {sub.category} • {sub.emailIds.length} related emails
+                  {sub.category} • {sub.emailIds.length} related email{sub.emailIds.length !== 1 ? 's' : ''}
                 </div>
               </div>
-              <div className="text-right">
+              <div className="text-right flex-shrink-0">
                 <div className="font-semibold text-slate-900 dark:text-white">
                   {sub.currency === 'USD' ? '$' : sub.currency}
                   {sub.monthlyAmount.toFixed(2)}
@@ -193,7 +213,8 @@ export function SubscriptionsPage() {
                   Last: {format(sub.lastRenewalDate, 'MMM d, yyyy')}
                 </div>
               </div>
-            </div>
+              <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
+            </button>
           ))}
         </div>
       ) : (
@@ -202,6 +223,115 @@ export function SubscriptionsPage() {
           title="No subscriptions found"
           description="No subscription emails detected with current filters"
         />
+      )}
+
+      {/* Subscription Detail Modal */}
+      {selectedSubscription && (
+        <div 
+          className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+          onClick={() => setSelectedSubscription(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xl">
+                    {selectedSubscription.serviceName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                      {selectedSubscription.serviceName}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1">
+                      {selectedSubscription.isActive ? (
+                        <span className="px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs rounded-full">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-xs rounded-full">
+                          Cancelled
+                        </span>
+                      )}
+                      <span className="text-sm text-slate-500 dark:text-slate-400">
+                        {selectedSubscription.category}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setSelectedSubscription(null)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-slate-500" />
+                </button>
+              </div>
+              
+              {/* Subscription Details */}
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">Amount</div>
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    {selectedSubscription.currency === 'USD' ? '$' : selectedSubscription.currency}
+                    {selectedSubscription.monthlyAmount.toFixed(2)}
+                    /{selectedSubscription.frequency === 'yearly' ? 'yr' : selectedSubscription.frequency === 'weekly' ? 'wk' : 'mo'}
+                  </div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">Last Payment</div>
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    {format(selectedSubscription.lastRenewalDate, 'MMM d, yyyy')}
+                  </div>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">Emails Found</div>
+                  <div className="font-semibold text-slate-900 dark:text-white">
+                    {selectedSubscription.emailIds.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Related Emails */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <h3 className="font-semibold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                <Mail className="w-4 h-4" />
+                Related Emails
+              </h3>
+              
+              {selectedEmails.length > 0 ? (
+                <div className="space-y-2">
+                  {selectedEmails.map(email => (
+                    <Link
+                      key={email.id}
+                      to={`/emails/${email.id}`}
+                      onClick={() => setSelectedSubscription(null)}
+                      className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                    >
+                      <Mail className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-900 dark:text-white truncate">
+                          {email.subject || '(No Subject)'}
+                        </div>
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                          {format(email.date, 'MMM d, yyyy')} • {email.sender}
+                        </div>
+                      </div>
+                      <ExternalLink className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                  No related emails found
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

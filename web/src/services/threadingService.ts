@@ -46,12 +46,16 @@ class ThreadingService {
    * Uses threadId if available, otherwise normalizes subject
    */
   private getThreadKey(email: Email): string {
-    // Use explicit threadId if available
+    // Use explicit threadId if available (already prefixed from parsing)
     if (email.threadId) {
+      // If already prefixed, return as-is
+      if (email.threadId.startsWith('subject:') || email.threadId.startsWith('thread:')) {
+        return email.threadId;
+      }
       return `thread:${email.threadId}`;
     }
 
-    // Normalize subject for thread matching
+    // Fallback: Normalize subject for thread matching (for legacy emails without threadId)
     const normalizedSubject = normalizeSubject(email.subject);
     
     // Create key from normalized subject
@@ -60,7 +64,7 @@ class ThreadingService {
       return `single:${email.id || Math.random()}`;
     }
 
-    return `subject:${normalizedSubject}`;
+    return `subject:${normalizedSubject.toLowerCase().replace(/\s+/g, '-')}`;
   }
 
   /**

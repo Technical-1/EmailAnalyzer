@@ -1,5 +1,5 @@
 import { useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -8,6 +8,7 @@ import { SYSTEM_FOLDERS } from '../types';
 export function EmailDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { 
     emails,
     toggleEmailStar, 
@@ -18,6 +19,9 @@ export function EmailDetailPage() {
     restoreEmail,
     permanentlyDeleteEmail,
   } = useAppStore();
+  
+  // Get return URL from navigation state (preserves view mode)
+  const returnUrl = (location.state as { returnUrl?: string })?.returnUrl;
 
   // Get email directly from emails array so component re-renders when it changes
   const email = useMemo(() => {
@@ -39,8 +43,10 @@ export function EmailDetailPage() {
   }, [email?.id, email?.isRead, markEmailAsRead]);
 
   const handleBack = () => {
-    // Use browser history to go back to the previous page
-    if (window.history.length > 1) {
+    // Use return URL from state if available (preserves view mode like threads)
+    if (returnUrl) {
+      navigate(returnUrl);
+    } else if (window.history.length > 1) {
       navigate(-1);
     } else {
       navigate('/emails');

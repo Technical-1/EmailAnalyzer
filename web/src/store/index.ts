@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailThread } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
 import {
   getEmails,
@@ -26,6 +26,7 @@ import {
   deleteCalendarEvents as deleteCalendarEventsDB,
   type ExportData,
 } from '../db/database';
+import { threadingService } from '../services/threadingService';
 
 interface AppState {
   // Data
@@ -37,6 +38,7 @@ interface AppState {
   folders: Folder[];
   subscriptions: Subscription[];
   newsletters: Newsletter[];
+  threads: EmailThread[];
   
   // Loading states
   isLoading: boolean;
@@ -103,6 +105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   folders: [],
   subscriptions: [],
   newsletters: [],
+  threads: [],
   isLoading: false,
   isInitialized: false,
   totalEmailCount: 0,
@@ -129,6 +132,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         getNewsletters(),
       ]);
       
+      // Pre-compute threads for instant switching
+      const threads = threadingService.buildThreads(emails);
+      
       set({
         emails,
         accounts,
@@ -138,6 +144,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         folders,
         subscriptions,
         newsletters,
+        threads,
         totalEmailCount: emails.length,
         isInitialized: true,
         isLoading: false,
@@ -152,7 +159,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   refreshEmails: async () => {
     try {
       const emails = await getEmails();
-      set({ emails, totalEmailCount: emails.length });
+      const threads = threadingService.buildThreads(emails);
+      set({ emails, threads, totalEmailCount: emails.length });
     } catch (error) {
       console.error('Failed to refresh emails:', error);
     }
@@ -237,6 +245,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         getNewsletters(),
       ]);
       
+      // Pre-compute threads
+      const threads = threadingService.buildThreads(emails);
+      
       set({
         emails,
         accounts,
@@ -246,6 +257,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         folders,
         subscriptions,
         newsletters,
+        threads,
         totalEmailCount: emails.length,
         isLoading: false,
       });
@@ -270,6 +282,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         folders,
         subscriptions: [],
         newsletters: [],
+        threads: [],
         totalEmailCount: 0,
         isInitialized: true, // Keep initialized but empty
       });

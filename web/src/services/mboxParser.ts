@@ -1,5 +1,5 @@
 import type { Email } from '../types';
-import { cleanEmailAddress } from '../utils/emailUtils';
+import { cleanEmailAddress, normalizeSubject } from '../utils/emailUtils';
 
 /**
  * Parser for MBOX email archive format
@@ -132,10 +132,18 @@ class MBOXParser {
       // Parse subject
       const subject = this.decodeHeaderValue(headers['subject'] || '(No Subject)');
 
-      // Extract thread ID
-      const threadId = headers['thread-topic'] || 
-                       headers['references']?.split(/\s+/)[0] ||
-                       headers['in-reply-to'];
+      // Extract thread ID from headers, or generate from normalized subject
+      let threadId = headers['thread-topic'] || 
+                     headers['references']?.split(/\s+/)[0] ||
+                     headers['in-reply-to'];
+      
+      // If no explicit thread ID, generate one from normalized subject
+      if (!threadId) {
+        const normalizedSubj = normalizeSubject(subject);
+        if (normalizedSubj) {
+          threadId = `subject:${normalizedSubj.toLowerCase().replace(/\s+/g, '-')}`;
+        }
+      }
 
       if (!sender && !subject) {
         return null;

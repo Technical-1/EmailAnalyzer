@@ -21,7 +21,7 @@ import { accountDetector } from './accountDetector';
 import { purchaseDetector } from './purchaseDetector';
 import { subscriptionDetector } from './subscriptionDetector';
 import { newsletterDetector } from './newsletterDetector';
-import { cleanEmailAddress } from '../utils/emailUtils';
+import { cleanEmailAddress, extractDomain, normalizeSubject } from '../utils/emailUtils';
 
 export type ProgressCallback = (progress: OLMProcessingProgress) => void;
 
@@ -268,6 +268,25 @@ class OLMParser {
       const isReadStr = getTextContent(['OPFMessageGetIsRead']);
       const isRead = isReadStr === '1' || isReadStr.toLowerCase() === 'true';
 
+      // Parse thread ID from OLM (if available)
+      let threadId = getTextContent([
+        'OPFMessageCopyThreadTopic',
+        'OPFMessageCopyConversationID', 
+        'threadId',
+        'Thread-Topic',
+        'In-Reply-To',
+        'References',
+      ]);
+
+      // If no explicit thread ID, generate one from normalized subject
+      if (!threadId) {
+        const normalizedSubject = normalizeSubject(subject || '');
+        if (normalizedSubject) {
+          // Create a thread key from normalized subject
+          threadId = `subject:${normalizedSubject.toLowerCase().replace(/\s+/g, '-')}`;
+        }
+      }
+
       // If we couldn't find a subject, this might not be a valid email
       if (!subject && !body && !preview) {
         return null;
@@ -286,6 +305,7 @@ class OLMParser {
         isRead,
         isStarred: false,
         folderId: 'inbox',
+        threadId: threadId || undefined,
         emailType: 'regular',
       };
     } catch (error) {
@@ -498,15 +518,31 @@ class OLMParser {
     // Detect subscriptions
     const subResult = subscriptionDetector.detectSubscription(email);
     if (subResult.isSubscription && subResult.serviceName) {
-      const existingSub = await getSubscriptionByServiceName(subResult.serviceName);
+      // Use normalized sender domain as the grouping key for consistency
+      const senderDomain = extractDomain(email.sender);
+      
+      // Try to find existing subscription by service name first, then by domain
+      let existingSub = await getSubscriptionByServiceName(subResult.serviceName);
+      if (!existingSub && senderDomain) {
+        existingSub = await getSubscriptionByServiceName(senderDomain);
+      }
+      
       if (existingSub) {
         // Update existing subscription with new email
-        const emailIds = [...existingSub.emailIds, email.id!];
-        const lastRenewalDate = email.date > existingSub.lastRenewalDate ? email.date : existingSub.lastRenewalDate;
+        const emailIds = [...new Set([...existingSub.emailIds, email.id!])]; // Dedupe
+        const isNewerEmail = email.date > existingSub.lastRenewalDate;
+        
+        // Only update amount if this is a newer email AND has a detected amount
+        // This ensures we use the most recent billing amount
+        const shouldUpdateAmount = isNewerEmail && subResult.amount && subResult.amount > 0;
+        
         await updateSubscription(existingSub.id!, {
           emailIds,
-          lastRenewalDate,
-          monthlyAmount: subResult.amount || existingSub.monthlyAmount,
+          lastRenewalDate: isNewerEmail ? email.date : existingSub.lastRenewalDate,
+          // Keep existing amount if new email doesn't have one, or if it's an older email
+          monthlyAmount: shouldUpdateAmount ? subResult.amount : existingSub.monthlyAmount,
+          // Update frequency only if detected and newer
+          frequency: (isNewerEmail && subResult.frequency) ? subResult.frequency : existingSub.frequency,
         });
       } else {
         // Create new subscription

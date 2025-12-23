@@ -149,6 +149,17 @@ class SubscriptionDetector {
       if (!serviceName) {
         serviceName = this.extractServiceName(subject, body);
       }
+
+      // Fallback to sender name or domain
+      if (!serviceName || serviceName.length < 3) {
+        // Use sender name if available
+        if (email.senderName && email.senderName.length > 2) {
+          serviceName = email.senderName;
+        } else {
+          // Use formatted domain as fallback
+          serviceName = this.formatDomainAsName(domain);
+        }
+      }
     }
 
     return {
@@ -159,6 +170,23 @@ class SubscriptionDetector {
       currency,
       frequency,
     };
+  }
+
+  /**
+   * Format a domain as a readable service name
+   */
+  private formatDomainAsName(domain: string): string {
+    // Remove common TLDs and subdomains
+    let name = domain
+      .replace(/^(mail|email|noreply|billing|notifications?|support|info|newsletter|updates?)\./i, '')
+      .replace(/\.(com|org|net|io|co|app|tv|me|us|uk|ca|au)$/i, '')
+      .replace(/\./g, ' ');
+    
+    // Capitalize each word
+    return name
+      .split(/[\s-_]+/)
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
   }
 
   /**

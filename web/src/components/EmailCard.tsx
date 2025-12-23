@@ -3,6 +3,7 @@ import { Star, Mail, MailOpen, ShoppingBag, UserCheck, Archive, Trash2, Circle }
 import type { Email } from '../types';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
+import { stripHtml } from '../utils/emailUtils';
 
 interface EmailCardProps {
   email: Email;
@@ -126,7 +127,7 @@ export function EmailCard({ email, onClick }: EmailCardProps) {
           </p>
 
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 line-clamp-2">
-            {email.body?.substring(0, 150)}...
+            {stripHtml(email.body || '').substring(0, 150)}...
           </p>
 
           {email.emailType !== 'regular' && (

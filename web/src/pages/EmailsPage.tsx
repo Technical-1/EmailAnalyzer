@@ -5,9 +5,9 @@ import { SearchInput } from '../components/SearchInput';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
 import { VirtualEmailList } from '../components/VirtualEmailList';
+import { VirtualThreadList } from '../components/VirtualThreadList';
 import { ThreadView } from '../components/ThreadView';
 import { useAppStore } from '../store';
-import { threadingService } from '../services/threadingService';
 import { SYSTEM_FOLDERS, type Email } from '../types';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
@@ -18,18 +18,32 @@ type ListMode = 'emails' | 'threads';
 
 const EMAILS_PER_PAGE = 50;
 const VIRTUAL_SCROLL_THRESHOLD = 100; // Use virtual scrolling when more than 100 emails
+const THREAD_VIRTUAL_THRESHOLD = 50; // Use virtual scrolling when more than 50 threads
 
 // Wrapper component to reset state on folder change
-function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
+function EmailsPageContent({ folderParam, initialListMode }: { folderParam: string | null; initialListMode: ListMode }) {
   const navigate = useNavigate();
-  const { emails, emptyTrash } = useAppStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { emails, threads: allThreads, emptyTrash } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<ViewMode>('paginated');
-  const [listMode, setListMode] = useState<ListMode>('emails');
+  const [listMode, setListMode] = useState<ListMode>(initialListMode);
+  
+  // Update URL when list mode changes
+  const handleListModeChange = useCallback((newMode: ListMode) => {
+    setListMode(newMode);
+    const newParams = new URLSearchParams(searchParams);
+    if (newMode === 'threads') {
+      newParams.set('view', 'threads');
+    } else {
+      newParams.delete('view');
+    }
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Special handling for favorites (starred emails across all folders)
   const isFavorites = folderParam === 'favorites';
@@ -104,11 +118,26 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
     return result;
   }, [emails, currentFolder, isFavorites, filter, searchQuery, sortField, sortOrder]);
 
-  // Build threads from processed emails
+  // Show all threads when in threads mode (for instant switching)
   const threads = useMemo(() => {
     if (listMode !== 'threads') return [];
-    return threadingService.buildThreads(processedEmails);
-  }, [processedEmails, listMode]);
+    
+    // Apply search within threads if user has entered a query
+    let result = allThreads;
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(thread =>
+        thread.subject.toLowerCase().includes(query) ||
+        thread.participants.some(p => p.toLowerCase().includes(query)) ||
+        thread.emails.some(e =>
+          e.sender.toLowerCase().includes(query) ||
+          e.body.toLowerCase().includes(query)
+        )
+      );
+    }
+
+    return result.sort((a, b) => b.lastMessageDate.getTime() - a.lastMessageDate.getTime());
+  }, [listMode, allThreads, searchQuery]);
 
   const folderEmailCount = isFavorites 
     ? emails.filter(e => e.isStarred).length 
@@ -168,10 +197,16 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
   const shouldUseVirtualScroll = viewMode === 'virtual' || processedEmails.length > VIRTUAL_SCROLL_THRESHOLD;
   const useVirtual = viewMode === 'virtual' && processedEmails.length > 0;
 
-  // Callback for email click in virtual list
+  // Callback for email click in virtual list - preserve view mode for back navigation
   const handleEmailClick = useCallback((email: Email) => {
-    navigate(`/emails/${email.id}`);
-  }, [navigate]);
+    // Build return URL with current view mode
+    const returnParams = new URLSearchParams();
+    if (folderParam) returnParams.set('folder', folderParam);
+    if (listMode === 'threads') returnParams.set('view', 'threads');
+    const returnUrl = returnParams.toString() ? `/emails?${returnParams.toString()}` : '/emails';
+    
+    navigate(`/emails/${email.id}`, { state: { returnUrl } });
+  }, [navigate, folderParam, listMode]);
 
   return (
     <div>
@@ -210,7 +245,7 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
         <SearchInput
           value={searchQuery}
           onChange={handleSearchChange}
-          placeholder="Search emails by subject, sender, or content..."
+          placeholder={listMode === 'threads' ? "Search conversations by subject, participants, or content..." : "Search emails by subject, sender, or content..."}
         />
       </div>
 
@@ -281,7 +316,7 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
           {/* List Mode Toggle */}
           <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
             <button
-              onClick={() => setListMode('emails')}
+              onClick={() => handleListModeChange('emails')}
               className={`px-3 py-1.5 text-sm font-medium flex items-center gap-1 transition-colors ${
                 listMode === 'emails'
                   ? 'bg-blue-500 text-white'
@@ -293,7 +328,7 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
               Emails
             </button>
             <button
-              onClick={() => setListMode('threads')}
+              onClick={() => handleListModeChange('threads')}
               className={`px-3 py-1.5 text-sm font-medium flex items-center gap-1 transition-colors ${
                 listMode === 'threads'
                   ? 'bg-blue-500 text-white'
@@ -328,21 +363,38 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
       {processedEmails.length > 0 ? (
         listMode === 'threads' ? (
           // Thread View Mode
-          <>
-            <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
-              <MessageSquare className="w-3 h-3 text-blue-500" />
-              {threads.length} conversations from {processedEmails.length} emails
-            </div>
-            <div className="space-y-3">
-              {threads.map(thread => (
-                <ThreadView
-                  key={thread.id}
-                  thread={thread}
-                  onEmailClick={handleEmailClick}
-                />
-              ))}
-            </div>
-          </>
+          threads.length > THREAD_VIRTUAL_THRESHOLD ? (
+            // Virtual scrolling for many threads
+            <>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+                <MessageSquare className="w-3 h-3 text-blue-500" />
+                {threads.length} conversations (virtual scrolling enabled)
+              </div>
+              <VirtualThreadList
+                threads={threads}
+                onEmailClick={handleEmailClick}
+                estimateSize={150}
+                overscan={3}
+              />
+            </>
+          ) : (
+            // Normal rendering for fewer threads
+            <>
+              <div className="text-xs text-slate-500 dark:text-slate-400 mb-2 flex items-center gap-1">
+                <MessageSquare className="w-3 h-3 text-blue-500" />
+                {threads.length} conversations
+              </div>
+              <div className="space-y-3">
+                {threads.map(thread => (
+                  <ThreadView
+                    key={thread.id}
+                    thread={thread}
+                    onEmailClick={handleEmailClick}
+                  />
+                ))}
+              </div>
+            </>
+          )
         ) : useVirtual ? (
           // Virtual Scrolling Mode
           <>
@@ -464,7 +516,8 @@ function EmailsPageContent({ folderParam }: { folderParam: string | null }) {
 export function EmailsPage() {
   const [searchParams] = useSearchParams();
   const folderParam = searchParams.get('folder');
+  const viewParam = searchParams.get('view') as ListMode | null;
   
   // Using key forces component remount when folder changes, resetting all state
-  return <EmailsPageContent key={folderParam ?? 'inbox'} folderParam={folderParam} />;
+  return <EmailsPageContent key={folderParam ?? 'inbox'} folderParam={folderParam} initialListMode={viewParam || 'emails'} />;
 }

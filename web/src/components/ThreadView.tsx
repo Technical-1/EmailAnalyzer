@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { ChevronDown, ChevronUp, Mail, MailOpen, Paperclip, Star, Users } from 'lucide-react';
 import type { Email, EmailThread } from '../types';
 import { useAppStore } from '../store';
+import { stripHtml } from '../utils/emailUtils';
 
 interface ThreadViewProps {
   thread: EmailThread;
@@ -160,7 +161,7 @@ function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps)
           </div>
 
           <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
-            {email.body.substring(0, 100)}...
+            {stripHtml(email.body).substring(0, 100)}...
           </div>
         </div>
 
@@ -226,11 +227,11 @@ function ThreadEmailItem({ email, isLast, onClick, onToggleStar, onToggleRead, e
 
           {showFull ? (
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-              {email.body}
+              {stripHtml(email.body)}
             </div>
           ) : (
             <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
-              {email.body.substring(0, 100)}...
+              {stripHtml(email.body).substring(0, 100)}...
             </div>
           )}
         </div>

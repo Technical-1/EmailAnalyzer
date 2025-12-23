@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { UploadPage } from './pages/UploadPage';
+import { HomePage } from './pages/HomePage';
 import { EmailsPage } from './pages/EmailsPage';
 import { EmailDetailPage } from './pages/EmailDetailPage';
 import { AccountsPage } from './pages/AccountsPage';
@@ -41,7 +41,7 @@ function AppContent() {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>
-        <Route index element={<UploadPage />} />
+        <Route index element={<HomePage />} />
         <Route path="emails" element={<EmailsPage />} />
         <Route path="emails/:id" element={<EmailDetailPage />} />
         <Route path="accounts" element={<AccountsPage />} />

@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { BarChart3, TrendingUp, DollarSign, Calendar, Users, Clock } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { BarChart3, TrendingUp, Users, Clock, ChevronDown } from 'lucide-react';
 import { useAppStore } from '../store';
 import { VolumeChart } from '../components/charts/VolumeChart';
 import { SendersChart } from '../components/charts/SendersChart';
@@ -8,51 +8,85 @@ import { Heatmap } from '../components/charts/Heatmap';
 import { StatsCard } from '../components/StatsCard';
 
 export function AnalyticsPage() {
-  const { emails, purchases, accounts } = useAppStore();
+  const { emails, purchases } = useAppStore();
+  const [selectedYear, setSelectedYear] = useState<number | 'all'>('all');
 
-  // Calculate statistics
+  // Get available years from email data
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    emails.forEach((email) => {
+      years.add(new Date(email.date).getFullYear());
+    });
+    return Array.from(years).sort((a, b) => b - a); // Most recent first
+  }, [emails]);
+
+  // Filter data by selected year
+  const filteredEmails = useMemo(() => {
+    if (selectedYear === 'all') return emails;
+    return emails.filter(e => new Date(e.date).getFullYear() === selectedYear);
+  }, [emails, selectedYear]);
+
+  const filteredPurchases = useMemo(() => {
+    if (selectedYear === 'all') return purchases;
+    return purchases.filter(p => new Date(p.purchaseDate).getFullYear() === selectedYear);
+  }, [purchases, selectedYear]);
+
+  // Calculate statistics based on filtered data
   const stats = useMemo(() => {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const recentEmails = emails.filter(e => new Date(e.date) >= thirtyDaysAgo);
-    const totalSpending = purchases.reduce((sum, p) => sum + p.amount, 0);
-    const recentSpending = purchases
-      .filter(p => new Date(p.purchaseDate) >= thirtyDaysAgo)
-      .reduce((sum, p) => sum + p.amount, 0);
-    
-    const uniqueSenders = new Set(emails.map(e => e.sender)).size;
+    const recentEmails = filteredEmails.filter(e => new Date(e.date) >= thirtyDaysAgo);
+    const uniqueSenders = new Set(filteredEmails.map(e => e.sender)).size;
+
+    // Calculate date range for avg emails/day
+    let dateRange = 1;
+    if (filteredEmails.length > 0) {
+      const sortedDates = filteredEmails.map(e => new Date(e.date).getTime()).sort((a, b) => a - b);
+      const oldestDate = sortedDates[0];
+      const newestDate = sortedDates[sortedDates.length - 1];
+      dateRange = Math.max(1, Math.ceil((newestDate - oldestDate) / (1000 * 60 * 60 * 24)));
+    }
     
     return {
-      totalEmails: emails.length,
+      totalEmails: filteredEmails.length,
       recentEmails: recentEmails.length,
-      totalSpending,
-      recentSpending,
-      accountCount: accounts.length,
       uniqueSenders,
+      avgEmailsPerDay: (filteredEmails.length / dateRange).toFixed(1),
     };
-  }, [emails, purchases, accounts]);
+  }, [filteredEmails]);
 
-  // Prepare data for charts
+  // Prepare data for charts using filtered data
   const volumeData = useMemo(() => {
     const monthlyData: Record<string, number> = {};
     
-    emails.forEach((email) => {
+    filteredEmails.forEach((email) => {
       const date = new Date(email.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       monthlyData[key] = (monthlyData[key] || 0) + 1;
     });
     
+    // If a specific year is selected, show all 12 months (even if 0)
+    if (selectedYear !== 'all') {
+      const result: { month: string; count: number }[] = [];
+      for (let month = 1; month <= 12; month++) {
+        const key = `${selectedYear}-${String(month).padStart(2, '0')}`;
+        result.push({ month: key, count: monthlyData[key] || 0 });
+      }
+      return result;
+    }
+    
+    // For 'all', show last 12 months
     return Object.entries(monthlyData)
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-12)
       .map(([month, count]) => ({ month, count }));
-  }, [emails]);
+  }, [filteredEmails, selectedYear]);
 
   const senderData = useMemo(() => {
     const senderCounts: Record<string, number> = {};
     
-    emails.forEach((email) => {
+    filteredEmails.forEach((email) => {
       const sender = email.senderName || email.sender.split('@')[0];
       senderCounts[sender] = (senderCounts[sender] || 0) + 1;
     });
@@ -61,27 +95,37 @@ export function AnalyticsPage() {
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
       .map(([name, count]) => ({ name, count }));
-  }, [emails]);
+  }, [filteredEmails]);
 
   const spendingData = useMemo(() => {
     const monthlySpending: Record<string, number> = {};
     
-    purchases.forEach((purchase) => {
+    filteredPurchases.forEach((purchase) => {
       const date = new Date(purchase.purchaseDate);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       monthlySpending[key] = (monthlySpending[key] || 0) + purchase.amount;
     });
     
+    // If a specific year is selected, show all 12 months (even if 0)
+    if (selectedYear !== 'all') {
+      const result: { month: string; amount: number }[] = [];
+      for (let month = 1; month <= 12; month++) {
+        const key = `${selectedYear}-${String(month).padStart(2, '0')}`;
+        result.push({ month: key, amount: monthlySpending[key] || 0 });
+      }
+      return result;
+    }
+    
     return Object.entries(monthlySpending)
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-12)
       .map(([month, amount]) => ({ month, amount }));
-  }, [purchases]);
+  }, [filteredPurchases, selectedYear]);
 
   const heatmapData = useMemo(() => {
     const hourlyData: number[][] = Array(7).fill(null).map(() => Array(24).fill(0));
     
-    emails.forEach((email) => {
+    filteredEmails.forEach((email) => {
       const date = new Date(email.date);
       const day = date.getDay();
       const hour = date.getHours();
@@ -89,7 +133,7 @@ export function AnalyticsPage() {
     });
     
     return hourlyData;
-  }, [emails]);
+  }, [filteredEmails]);
 
   if (emails.length === 0) {
     return (
@@ -107,47 +151,52 @@ export function AnalyticsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <BarChart3 className="w-8 h-8 text-blue-500" />
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Analytics</h1>
-          <p className="text-slate-500 dark:text-slate-400">Email patterns and spending insights</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <BarChart3 className="w-8 h-8 text-blue-500" />
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Analytics</h1>
+            <p className="text-slate-500 dark:text-slate-400">Email patterns and spending insights</p>
+          </div>
+        </div>
+        
+        {/* Year Selector */}
+        <div className="relative">
+          <select
+            value={selectedYear}
+            onChange={(e) => setSelectedYear(e.target.value === 'all' ? 'all' : parseInt(e.target.value))}
+            className="appearance-none bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-medium px-4 py-2 pr-10 rounded-lg border border-slate-200 dark:border-slate-600 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+          >
+            <option value="all">All Time</option>
+            {availableYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
         </div>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatsCard
           title="Total Emails"
           value={stats.totalEmails.toLocaleString()}
-          subtitle={`${stats.recentEmails} in last 30 days`}
+          subtitle={selectedYear === 'all' ? `${stats.recentEmails} in last 30 days` : `In ${selectedYear}`}
           icon={TrendingUp}
           color="blue"
         />
         <StatsCard
-          title="Total Spending"
-          value={`$${stats.totalSpending.toFixed(2)}`}
-          subtitle={`$${stats.recentSpending.toFixed(2)} in last 30 days`}
-          icon={DollarSign}
-          color="green"
-        />
-        <StatsCard
-          title="Accounts"
-          value={stats.accountCount.toString()}
-          subtitle="Detected signups"
-          icon={Calendar}
-          color="purple"
-        />
-        <StatsCard
           title="Unique Senders"
           value={stats.uniqueSenders.toLocaleString()}
-          subtitle="Different email addresses"
+          subtitle={selectedYear === 'all' ? "Different email addresses" : `In ${selectedYear}`}
           icon={Users}
           color="orange"
         />
         <StatsCard
           title="Avg. Emails/Day"
-          value={(stats.totalEmails / Math.max(1, Math.ceil((Date.now() - new Date(emails[emails.length - 1]?.date || Date.now()).getTime()) / (1000 * 60 * 60 * 24)))).toFixed(1)}
+          value={stats.avgEmailsPerDay}
           subtitle="Based on date range"
           icon={Clock}
           color="cyan"
