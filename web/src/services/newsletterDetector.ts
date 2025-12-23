@@ -124,7 +124,8 @@ class NewsletterDetector {
 
     // Check sender domain
     const domain = extractDomain(sender);
-    for (const prefix of this.knownPromotionalDomains) {
+    const promotionalPrefixes = Array.from(this.knownPromotionalDomains);
+    for (const prefix of promotionalPrefixes) {
       if (domain.includes(prefix)) {
         newsletterScore += 20;
         promotionalScore += 20;
@@ -242,11 +243,15 @@ class NewsletterDetector {
       const latestEmail = sortedEmails[0];
       const unsubscribeLinks = Array.from(data.unsubscribeLinks);
 
+      // Calculate frequency based on email dates
+      const frequency = this.calculateFrequency(sortedEmails);
+
       newsletters.set(sender, {
         senderEmail: sender,
-        senderName: latestEmail.senderName || sender.split('@')[0],
+        senderName: latestEmail.senderName || this.extractNameFromEmail(sender),
         emailCount: data.emails.length,
         lastEmailDate: new Date(latestEmail.date),
+        frequency,
         unsubscribeLink: unsubscribeLinks[0],
         isPromotional: this.detectNewsletter(latestEmail).isPromotional,
       });
@@ -254,7 +259,126 @@ class NewsletterDetector {
 
     return newsletters;
   }
+
+  /**
+   * Calculate sending frequency based on email dates
+   */
+  private calculateFrequency(emails: Email[]): 'daily' | 'weekly' | 'monthly' | 'irregular' {
+    if (emails.length < 2) {
+      return 'irregular';
+    }
+
+    // Calculate average days between emails
+    const dates = emails.map(e => new Date(e.date).getTime());
+    let totalDays = 0;
+    
+    for (let i = 0; i < dates.length - 1; i++) {
+      const daysDiff = (dates[i] - dates[i + 1]) / (1000 * 60 * 60 * 24);
+      totalDays += daysDiff;
+    }
+    
+    const avgDays = totalDays / (dates.length - 1);
+
+    if (avgDays <= 2) {
+      return 'daily';
+    } else if (avgDays <= 10) {
+      return 'weekly';
+    } else if (avgDays <= 45) {
+      return 'monthly';
+    }
+    
+    return 'irregular';
+  }
+
+  /**
+   * Extract a readable name from an email address
+   */
+  private extractNameFromEmail(email: string): string {
+    const [localPart, domain] = email.split('@');
+    
+    // Known service mappings for common newsletter senders
+    const knownSenders: Record<string, string> = {
+      'nytimes.com': 'New York Times',
+      'newyorktimes.com': 'New York Times',
+      'washingtonpost.com': 'Washington Post',
+      'wsj.com': 'Wall Street Journal',
+      'amazon.com': 'Amazon',
+      'netflix.com': 'Netflix',
+      'spotify.com': 'Spotify',
+      'linkedin.com': 'LinkedIn',
+      'twitter.com': 'Twitter',
+      'facebook.com': 'Facebook',
+      'instagram.com': 'Instagram',
+      'medium.com': 'Medium',
+      'substack.com': 'Substack',
+      'mailchimp.com': 'Mailchimp',
+      'hubspot.com': 'HubSpot',
+      'salesforce.com': 'Salesforce',
+    };
+    
+    // Check if domain matches known service
+    if (domain) {
+      const domainLower = domain.toLowerCase();
+      for (const [key, name] of Object.entries(knownSenders)) {
+        if (domainLower.includes(key)) {
+          return name;
+        }
+      }
+      
+      // Get main domain part
+      const domainParts = domain.split('.');
+      let mainPart: string;
+      
+      // Handle domains like mail.example.com or newsletter.example.com
+      if (domainParts.length >= 2) {
+        // Get the second-to-last part (e.g., 'example' from 'mail.example.com')
+        const potentialName = domainParts[domainParts.length - 2];
+        const genericSubdomains = ['mail', 'email', 'noreply', 'no-reply', 'newsletter', 'news', 'info', 'marketing', 'mailer', 'e', 'beta'];
+        
+        if (genericSubdomains.includes(domainParts[0].toLowerCase()) && domainParts.length >= 3) {
+          // Get the domain name instead of the subdomain
+          mainPart = domainParts[domainParts.length - 2];
+        } else {
+          mainPart = potentialName;
+        }
+      } else {
+        mainPart = domainParts[0];
+      }
+      
+      // Format the name nicely
+      if (mainPart && mainPart.length >= 2) {
+        // Handle compound names like "seaworldparks" -> "Seaworld Parks"
+        const formatted = mainPart
+          .replace(/([a-z])([A-Z])/g, '$1 $2')  // camelCase
+          .replace(/[-_]/g, ' ')  // separators
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+        
+        return formatted;
+      }
+    }
+    
+    // Fall back to local part as last resort
+    if (localPart) {
+      const cleaned = localPart
+        .replace(/[._-]/g, ' ')
+        .replace(/\d+/g, '')
+        .trim();
+      
+      if (cleaned.length > 0) {
+        return cleaned
+          .split(' ')
+          .filter(word => word.length > 0)
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+          .join(' ');
+      }
+    }
+    
+    return 'Unknown';
+  }
 }
+
 
 export const newsletterDetector = new NewsletterDetector();
 

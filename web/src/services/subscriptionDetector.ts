@@ -1,5 +1,5 @@
 import type { Email, Subscription } from '../types';
-import { stripHtml, extractDomain } from '../utils/emailUtils';
+import { stripHtml, extractDomain, formatDomainAsName } from '../utils/emailUtils';
 
 /**
  * Detector for recurring subscription services
@@ -157,7 +157,7 @@ class SubscriptionDetector {
           serviceName = email.senderName;
         } else {
           // Use formatted domain as fallback
-          serviceName = this.formatDomainAsName(domain);
+          serviceName = formatDomainAsName(domain);
         }
       }
     }
@@ -170,23 +170,6 @@ class SubscriptionDetector {
       currency,
       frequency,
     };
-  }
-
-  /**
-   * Format a domain as a readable service name
-   */
-  private formatDomainAsName(domain: string): string {
-    // Remove common TLDs and subdomains
-    let name = domain
-      .replace(/^(mail|email|noreply|billing|notifications?|support|info|newsletter|updates?)\./i, '')
-      .replace(/\.(com|org|net|io|co|app|tv|me|us|uk|ca|au)$/i, '')
-      .replace(/\./g, ' ');
-    
-    // Capitalize each word
-    return name
-      .split(/[\s-_]+/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
   }
 
   /**
@@ -257,19 +240,55 @@ class SubscriptionDetector {
    * Extract service name from email content
    */
   private extractServiceName(subject: string, body: string): string | undefined {
-    // Try to extract from "Your [Service] subscription"
-    const subjectMatch = subject.match(/(?:your\s+)?(\w+(?:\s+\w+)?)\s+subscription/i);
-    if (subjectMatch) {
-      return subjectMatch[1];
+    // Try to extract from subject
+    const subjectPatterns = [
+      /(?:your\s+)?([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)\s+subscription/i,
+      /subscription\s+(?:to|for)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)/i,
+      /welcome\s+to\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)/i,
+      /([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)\s+(?:membership|premium|pro|plus)/i,
+    ];
+
+    for (const pattern of subjectPatterns) {
+      const match = subject.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        // Validate it's a reasonable service name
+        if (name.length >= 2 && name.length <= 30 && this.isValidServiceName(name)) {
+          return name;
+        }
+      }
     }
 
-    // Try to extract from "Thank you for subscribing to [Service]"
-    const bodyMatch = body.match(/(?:subscribing to|subscription to)\s+(\w+(?:\s+\w+)?)/i);
-    if (bodyMatch) {
-      return bodyMatch[1];
+    // Try to extract from body
+    const bodyPatterns = [
+      /(?:subscribing to|subscription to)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)/i,
+      /thank you for (?:joining|subscribing to)\s+([A-Z][a-zA-Z0-9]+(?:\s+[A-Z][a-zA-Z0-9]+)?)/i,
+    ];
+
+    for (const pattern of bodyPatterns) {
+      const match = body.match(pattern);
+      if (match && match[1]) {
+        const name = match[1].trim();
+        if (name.length >= 2 && name.length <= 30 && this.isValidServiceName(name)) {
+          return name;
+        }
+      }
     }
 
     return undefined;
+  }
+
+  /**
+   * Check if a string is a valid service name (not generic words)
+   */
+  private isValidServiceName(name: string): boolean {
+    const invalidWords = [
+      'your', 'the', 'this', 'that', 'our', 'monthly', 'annual', 'yearly',
+      'weekly', 'subscription', 'membership', 'billing', 'payment', 'account',
+      'email', 'newsletter', 'update', 'notification', 'com', 'org', 'net',
+      'edu', 'gov', 'mail', 'info', 'noreply', 'reply'
+    ];
+    return !invalidWords.includes(name.toLowerCase());
   }
 
   /**

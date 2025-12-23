@@ -147,3 +147,53 @@ export function getColorForString(str: string): string {
   
   return colors[Math.abs(hash) % colors.length];
 }
+
+/**
+ * Format a domain as a readable service/sender name
+ */
+export function formatDomainAsName(domain: string): string {
+  if (!domain) return '';
+  
+  // Remove common prefixes (subdomains used for email)
+  let name = domain
+    .replace(/^(mail|email|noreply|no-reply|billing|notifications?|support|info|newsletter|news|updates?|marketing|promo|alerts?|digest|reply|bounce|mailer|sender|e\.)\./i, '');
+  
+  // Extract main domain part
+  const parts = name.split('.');
+  
+  // Handle TLDs - get the main domain name
+  if (parts.length >= 2) {
+    // Check for country-code second-level domains (e.g., co.uk, com.au)
+    const lastTwo = parts.slice(-2).join('.');
+    const countrySecondLevel = ['co.uk', 'co.au', 'com.au', 'org.uk', 'co.nz', 'com.br'];
+    
+    if (countrySecondLevel.includes(lastTwo.toLowerCase()) && parts.length >= 3) {
+      name = parts[parts.length - 3];
+    } else {
+      name = parts[parts.length - 2];
+    }
+  } else {
+    name = parts[0];
+  }
+  
+  // Skip if result is too generic
+  const genericNames = ['mail', 'email', 'noreply', 'info', 'support', 'contact', 'hello', 'team'];
+  if (genericNames.includes(name.toLowerCase())) {
+    // Try to get the domain root
+    if (parts.length >= 2) {
+      name = parts[0];
+    }
+  }
+  
+  // Handle common compound domains
+  name = name
+    .replace(/[_-]/g, ' ')  // Convert separators to spaces
+    .replace(/([a-z])([A-Z])/g, '$1 $2');  // Split camelCase
+  
+  // Capitalize each word
+  return name
+    .split(/\s+/)
+    .filter(word => word.length > 0)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ') || domain;
+}

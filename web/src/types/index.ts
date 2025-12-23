@@ -175,6 +175,7 @@ export interface Newsletter {
   senderName: string;
   emailCount: number;
   lastEmailDate: Date;
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'irregular';
   unsubscribeLink?: string;
   isPromotional: boolean;
 }
