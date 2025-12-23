@@ -22,8 +22,6 @@ Explore years of archived emails offline. Automatically discover accounts, track
 <!-- PASTE YOUR VERCEL LINK HERE -->
 **🚀 Coming Soon!**
 
-> *Replace this section with your hosted Vercel link after deployment.*
-
 ---
 
 ## ✨ Features
