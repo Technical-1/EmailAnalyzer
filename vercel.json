@@ -1,6 +1,6 @@
 {
   "installCommand": "cd web && npm install",
-  "buildCommand": "cd web && npm run build",
+  "buildCommand": "cd web && npx vite build",
   "outputDirectory": "web/dist",
   "framework": "vite",
   "rewrites": [
