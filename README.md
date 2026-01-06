@@ -19,8 +19,7 @@ Explore years of archived emails offline. Automatically discover accounts, track
 
 ## 🎯 Live Demo
 
-<!-- PASTE YOUR VERCEL LINK HERE -->
-**🚀 Coming Soon!**
+**🔗 [email-analyzer-eta.vercel.app](https://email-analyzer-eta.vercel.app)**
 
 ---
 
