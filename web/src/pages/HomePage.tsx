@@ -1,25 +1,28 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { 
   Mail, Users, Calendar, ShoppingBag, UserCheck, RefreshCw, Newspaper, 
-  Paperclip, Building2, BarChart3, Upload, ArrowRight, TrendingUp,
+  Paperclip, Building2, BarChart3, Upload, ArrowRight,
   CheckCircle, Inbox, Star, Archive
 } from 'lucide-react';
 import { FileDropzone } from '../components/FileDropzone';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatsCard } from '../components/StatsCard';
-import { olmParser, type ProgressCallback } from '../services/olmParser';
-import { mboxParser } from '../services/mboxParser';
 import { gmailTakeoutParser } from '../services/gmailTakeoutParser';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import type { OLMProcessingProgress, OLMProcessingResult } from '../types';
+import type { 
+  WorkerOutputMessage, 
+  ParseFileMessage 
+} from '../workers/parserWorker.types';
 import {
   insertEmail,
   insertAccount,
   insertPurchase,
   findDuplicatePurchase,
   insertContact,
+  insertCalendarEvent,
   getAccountByServiceName,
   getContactByEmail,
   updateContactEmailCount,
@@ -36,222 +39,45 @@ import { purchaseDetector } from '../services/purchaseDetector';
 import { subscriptionDetector } from '../services/subscriptionDetector';
 import { newsletterDetector } from '../services/newsletterDetector';
 import { extractDomain } from '../utils/emailUtils';
-import type { Email, Account, Subscription, Newsletter } from '../types';
+import type { Email, Account, Subscription, Newsletter, Contact, CalendarEvent } from '../types';
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { emails, accounts, purchases, contacts, calendarEvents, subscriptions, newsletters, refreshAll } = useAppStore();
+  const { emails, accounts, purchases, subscriptions, newsletters, refreshAll } = useAppStore();
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState<OLMProcessingProgress | null>(null);
   const [result, setResult] = useState<OLMProcessingResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Reference to the worker
+  const workerRef = useRef<Worker | null>(null);
+  // Track processing result during worker operation
+  const processingResultRef = useRef<OLMProcessingResult>({
+      emails: 0,
+      contacts: 0,
+      calendarEvents: 0,
+      accounts: 0,
+      purchases: 0,
+      subscriptions: 0,
+      newsletters: 0,
+  });
+  // Track folder IDs found during import
+  const folderIdsRef = useRef<Set<string>>(new Set());
+
   const hasData = emails.length > 0;
 
-  const handleFileSelect = async (file: File) => {
-    setIsProcessing(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      const progressCallback: ProgressCallback = (p) => {
-        setProgress(p);
-      };
-
-      let processingResult: OLMProcessingResult;
-
-      // Detect file type and route to appropriate parser
-      const fileName = file.name.toLowerCase();
-      if (fileName.endsWith('.olm')) {
-        // OLM file - use existing parser
-        processingResult = await olmParser.parseOLMFile(file, progressCallback);
-      } else if (gmailTakeoutParser.isGmailTakeout(file)) {
-        // Gmail Takeout ZIP file
-        processingResult = await processGmailTakeout(file, progressCallback);
-      } else if (fileName.endsWith('.mbox') || fileName.endsWith('.mbx')) {
-        // MBOX file
-        processingResult = await processMBOXFile(file, progressCallback);
-      } else {
-        throw new Error('Unsupported file format. Please use .olm, .mbox, .mbx, or Gmail Takeout .zip files.');
+  // Cleanup worker on unmount
+  useEffect(() => {
+    return () => {
+      if (workerRef.current) {
+        workerRef.current.terminate();
+        workerRef.current = null;
       }
-
-      setResult(processingResult);
-      
-      // Refresh the store with new data
-      await refreshAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process file');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Helper function to process MBOX files using streaming for large file support
-  const processMBOXFile = async (
-    file: File,
-    onProgress: ProgressCallback
-  ): Promise<OLMProcessingResult> => {
-    const result: OLMProcessingResult = {
-      emails: 0,
-      contacts: 0,
-      calendarEvents: 0,
-      accounts: 0,
-      purchases: 0,
-      subscriptions: 0,
-      newsletters: 0,
     };
+  }, []);
 
-    // Track all unique folder IDs to create them
-    const folderIds = new Set<string>();
-
-    onProgress({
-      stage: 'extracting',
-      progress: 0,
-      message: 'Reading MBOX file...',
-    });
-
-    // Process emails in batches as they're parsed (memory efficient)
-    const processBatch = async (emails: Omit<Email, 'id'>[], batchNumber: number) => {
-      for (const emailData of emails) {
-        try {
-          // Track folder ID
-          if (emailData.folderId) {
-            folderIds.add(emailData.folderId);
-          }
-          
-          const emailId = await insertEmail(emailData);
-          result.emails++;
-          
-          // Run detection on every 5th email to save time on large imports
-          if (result.emails % 5 === 0) {
-            const email: Email = { ...emailData, id: emailId };
-            await runDetection(email, result);
-          }
-          
-          // Track contacts for every 10th email
-          if (result.emails % 10 === 0) {
-            const newContact = await trackContact(emailData);
-            if (newContact) {
-              result.contacts++;
-            }
-          }
-        } catch (err) {
-          console.warn('Error processing email:', err);
-        }
-      }
-      
-      onProgress({
-        stage: 'parsing_emails',
-        progress: Math.min(95, 10 + batchNumber * 2),
-        message: `Saved ${result.emails} emails...`,
-      });
-    };
-
-    // Adapt progress callback
-    const adaptedProgress = (progress: number, message: string) => {
-      onProgress({
-        stage: progress < 95 ? 'parsing_emails' : 'saving',
-        progress,
-        message,
-      });
-    };
-
-    // Use streaming parser - processes in batches, doesn't hold all emails in memory
-    await mboxParser.parseMBOXFileStreaming(file, adaptedProgress, processBatch);
-
-    // Create any folders that were found during import
-    if (folderIds.size > 0) {
-      onProgress({
-        stage: 'saving',
-        progress: 98,
-        message: `Creating ${folderIds.size} folders...`,
-      });
-      await ensureFoldersExist(Array.from(folderIds));
-    }
-
-    onProgress({
-      stage: 'saving',
-      progress: 100,
-      message: `Import complete! ${result.emails} emails processed.`,
-    });
-
-    return result;
-  };
-
-  // Helper function to process Gmail Takeout files
-  const processGmailTakeout = async (
-    file: File,
-    onProgress: ProgressCallback
-  ): Promise<OLMProcessingResult> => {
-    const result: OLMProcessingResult = {
-      emails: 0,
-      contacts: 0,
-      calendarEvents: 0,
-      accounts: 0,
-      purchases: 0,
-      subscriptions: 0,
-      newsletters: 0,
-    };
-
-    // Adapt progress callback
-    const adaptedProgress = (progress: number, message: string) => {
-      let stage: OLMProcessingProgress['stage'] = 'parsing_emails';
-      if (progress < 20) stage = 'extracting';
-      else if (progress < 80) stage = 'parsing_emails';
-      else if (progress < 95) stage = 'detecting';
-      else stage = 'saving';
-
-      onProgress({
-        stage,
-        progress,
-        message,
-      });
-    };
-
-    const parsedEmails = await gmailTakeoutParser.parseGmailTakeout(file, adaptedProgress);
-
-    onProgress({
-      stage: 'parsing_emails',
-      progress: 50,
-      message: `Found ${parsedEmails.length} emails, saving...`,
-    });
-
-    // Save emails and run detection
-    for (let i = 0; i < parsedEmails.length; i++) {
-      const emailData = parsedEmails[i];
-      const emailId = await insertEmail(emailData);
-      result.emails++;
-      const email: Email = { ...emailData, id: emailId };
-
-      // Run detection
-      await runDetection(email, result);
-
-      // Track contacts
-      const newContact = await trackContact(emailData);
-      if (newContact) {
-        result.contacts++;
-      }
-
-      if (i % 100 === 0 || i === parsedEmails.length - 1) {
-        onProgress({
-          stage: 'parsing_emails',
-          progress: 50 + Math.round((i + 1) / parsedEmails.length * 40),
-          message: `Processed ${i + 1} of ${parsedEmails.length} emails`,
-        });
-      }
-    }
-
-    onProgress({
-      stage: 'saving',
-      progress: 100,
-      message: 'Processing complete!',
-    });
-
-    return result;
-  };
-
-  // Helper function to run detection on an email (reused from olmParser logic)
-  const runDetection = async (email: Email, result: OLMProcessingResult): Promise<void> => {
+  // Helper function to run detection on an email
+  const runDetection = useCallback(async (email: Email, result: OLMProcessingResult): Promise<void> => {
     // Detect account signups
     const accountResult = accountDetector.detectAccountSignup(email);
     if (accountResult.type === 'account' && accountResult.data?.serviceName) {
@@ -312,7 +138,6 @@ export function HomePage() {
           emailIds,
           lastRenewalDate: isNewerEmail ? email.date : existingSub.lastRenewalDate,
           monthlyAmount: shouldUpdateAmount ? subResult.amount : existingSub.monthlyAmount,
-          frequency: (isNewerEmail && subResult.frequency) ? subResult.frequency : existingSub.frequency,
         });
       } else {
         const newSub: Omit<Subscription, 'id'> = {
@@ -353,10 +178,10 @@ export function HomePage() {
         result.newsletters++;
       }
     }
-  };
+  }, []);
 
   // Helper function to track contacts
-  const trackContact = async (email: Omit<Email, 'id'>): Promise<boolean> => {
+  const trackContact = useCallback(async (email: Omit<Email, 'id'>): Promise<boolean> => {
     const senderEmail = email.sender;
     if (!senderEmail || senderEmail === 'unknown@example.com') return false;
 
@@ -379,7 +204,233 @@ export function HomePage() {
       });
       return true;
     }
-  };
+  }, []);
+
+  // Process email batch from worker
+  const processEmailBatch = useCallback(async (
+    emailsData: Omit<Email, 'id'>[],
+    result: OLMProcessingResult,
+    folderIds: Set<string>
+  ) => {
+    for (const emailData of emailsData) {
+      try {
+        // Ensure date is a Date object (JSON serialization may convert to string)
+        const email: Omit<Email, 'id'> = {
+          ...emailData,
+          date: new Date(emailData.date),
+        };
+
+        // Track folder ID
+        if (email.folderId) {
+          folderIds.add(email.folderId);
+        }
+        
+        const emailId = await insertEmail(email);
+        result.emails++;
+        
+        // Run detection on every 5th email to save time on large imports
+        if (result.emails % 5 === 0) {
+          const emailWithId: Email = { ...email, id: emailId };
+          await runDetection(emailWithId, result);
+        }
+        
+        // Track contacts for every 10th email
+        if (result.emails % 10 === 0) {
+          const newContact = await trackContact(email);
+          if (newContact) {
+            result.contacts++;
+          }
+        }
+      } catch (err) {
+        console.warn('Error processing email:', err);
+      }
+    }
+  }, [runDetection, trackContact]);
+
+  // Process contact batch from worker (OLM files)
+  const processContactBatch = useCallback(async (
+    contactsData: Omit<Contact, 'id'>[],
+    result: OLMProcessingResult
+  ) => {
+    for (const contactData of contactsData) {
+      try {
+        // Check if contact already exists
+        if (contactData.email) {
+          const existing = await getContactByEmail(contactData.email);
+          if (existing) continue;
+        }
+        
+        await insertContact({
+          ...contactData,
+          lastEmailDate: new Date(contactData.lastEmailDate),
+        });
+        result.contacts++;
+      } catch (err) {
+        console.warn('Error processing contact:', err);
+      }
+    }
+  }, []);
+
+  // Process calendar event batch from worker (OLM files)
+  const processCalendarBatch = useCallback(async (
+    eventsData: Omit<CalendarEvent, 'id'>[],
+    result: OLMProcessingResult
+  ) => {
+    for (const eventData of eventsData) {
+      try {
+        await insertCalendarEvent({
+          ...eventData,
+          startDate: new Date(eventData.startDate),
+          endDate: new Date(eventData.endDate),
+        });
+        result.calendarEvents++;
+      } catch (err) {
+        console.warn('Error processing calendar event:', err);
+      }
+    }
+  }, []);
+
+  // Handle worker messages
+  const handleWorkerMessage = useCallback(async (event: MessageEvent<WorkerOutputMessage>) => {
+    const message = event.data;
+    const result = processingResultRef.current;
+    const folderIds = folderIdsRef.current;
+
+    switch (message.type) {
+      case 'PROGRESS':
+        setProgress(message.payload);
+        break;
+
+      case 'EMAIL_BATCH':
+        await processEmailBatch(message.payload.emails, result, folderIds);
+        setProgress(prev => prev ? {
+          ...prev,
+          message: `Saved ${result.emails} emails...`,
+        } : null);
+        break;
+
+      case 'CONTACT_BATCH':
+        await processContactBatch(message.payload.contacts, result);
+        break;
+
+      case 'CALENDAR_BATCH':
+        await processCalendarBatch(message.payload.events, result);
+        break;
+
+      case 'COMPLETE':
+        // Create any folders that were found during import
+        if (folderIds.size > 0) {
+          setProgress({
+            stage: 'saving',
+            progress: 98,
+            message: `Creating ${folderIds.size} folders...`,
+          });
+          await ensureFoldersExist(Array.from(folderIds));
+        }
+
+        setProgress({
+          stage: 'saving',
+          progress: 100,
+          message: `Import complete! ${result.emails} emails processed.`,
+        });
+        
+        // Set final result
+        setResult({ ...result });
+        setIsProcessing(false);
+        
+        // Terminate worker
+        if (workerRef.current) {
+          workerRef.current.terminate();
+          workerRef.current = null;
+        }
+        
+        // Refresh the store with new data
+        await refreshAll();
+        break;
+
+      case 'ERROR':
+        setError(message.payload.message);
+        setIsProcessing(false);
+        
+        // Terminate worker on error
+        if (workerRef.current) {
+          workerRef.current.terminate();
+          workerRef.current = null;
+        }
+        break;
+    }
+  }, [processEmailBatch, processContactBatch, processCalendarBatch, refreshAll]);
+
+  // Start worker and process file
+  const processWithWorker = useCallback((file: File, fileType: 'olm' | 'mbox' | 'gmail-takeout') => {
+    // Reset tracking
+    processingResultRef.current = {
+      emails: 0,
+      contacts: 0,
+      calendarEvents: 0,
+      accounts: 0,
+      purchases: 0,
+      subscriptions: 0,
+      newsletters: 0,
+    };
+    folderIdsRef.current = new Set();
+
+    // Create worker
+    const worker = new Worker(
+      new URL('../workers/parserWorker.ts', import.meta.url),
+      { type: 'module' }
+    );
+
+    worker.onmessage = handleWorkerMessage;
+    worker.onerror = (error) => {
+      console.error('Worker error:', error);
+      setError(`Worker error: ${error.message}`);
+      setIsProcessing(false);
+      worker.terminate();
+      workerRef.current = null;
+    };
+
+    workerRef.current = worker;
+
+    // Send file to worker
+    const message: ParseFileMessage = {
+      type: 'PARSE_FILE',
+      payload: { file, fileType },
+    };
+    worker.postMessage(message);
+  }, [handleWorkerMessage]);
+
+  const handleFileSelect = useCallback(async (file: File) => {
+    setIsProcessing(true);
+    setError(null);
+    setResult(null);
+    setProgress({
+      stage: 'extracting',
+      progress: 0,
+      message: 'Preparing to process file...',
+    });
+
+    try {
+      // Detect file type and route to appropriate handler
+      const fileName = file.name.toLowerCase();
+      
+      if (fileName.endsWith('.olm')) {
+        // OLM file - use Web Worker
+        processWithWorker(file, 'olm');
+      } else if (gmailTakeoutParser.isGmailTakeout(file)) {
+        // Gmail Takeout ZIP file - use Web Worker
+        processWithWorker(file, 'gmail-takeout');
+      } else if (fileName.endsWith('.mbox') || fileName.endsWith('.mbx')) {
+        // MBOX file - use Web Worker
+        processWithWorker(file, 'mbox');
+      } else {
+        throw new Error('Unsupported file format. Please use .olm, .mbox, .mbx, or Gmail Takeout .zip files.');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to process file');
+      setIsProcessing(false);
+    }
+  }, [processWithWorker]);
 
   // Show upload interface when no data
   if (!hasData && !result) {
@@ -752,4 +803,3 @@ function FeatureCard({ icon: Icon, title, description, color }: {
     </div>
   );
 }
-

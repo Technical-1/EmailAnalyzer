@@ -208,9 +208,6 @@ export function Layout() {
               <h1 className="text-lg font-bold text-slate-900 dark:text-white">
                 Email Analyzer
               </h1>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                OLM Archive Parser
-              </p>
             </div>
           </Link>
         </div>

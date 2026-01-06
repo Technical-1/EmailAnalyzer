@@ -1,20 +1,29 @@
 import JSZip from 'jszip';
 import type { Email } from '../types';
-import { mboxParser } from './mboxParser';
+import { mboxParser, type EmailBatchCallback } from './mboxParser';
 
 /**
  * Parser for Google Takeout email archives
  * Handles the specific ZIP structure from Google Takeout
+ * 
+ * Optimized for large files:
+ * - Sequential MBOX processing to reduce memory pressure
+ * - Explicit cleanup between files to allow garbage collection
+ * - Streaming batch processing for each MBOX file
  */
 class GmailTakeoutParser {
   /**
-   * Parse a Gmail Takeout ZIP file
+   * Parse a Gmail Takeout ZIP file with streaming support
+   * Processes MBOX files sequentially and calls onBatch for each batch of emails
    */
-  async parseGmailTakeout(
+  async parseGmailTakeoutStreaming(
     file: File,
-    onProgress?: (progress: number, message: string) => void
-  ): Promise<Omit<Email, 'id'>[]> {
-    const emails: Omit<Email, 'id'>[] = [];
+    onProgress?: (progress: number, message: string) => void,
+    onBatch?: EmailBatchCallback
+  ): Promise<number> {
+    let totalEmailsParsed = 0;
+    let globalBatchNumber = 0;
+    const seenEmailKeys = new Set<string>();
 
     onProgress?.(0, 'Opening Gmail Takeout archive...');
 
@@ -40,9 +49,10 @@ class GmailTakeoutParser {
       );
     }
 
-    let processedFiles = 0;
-
-    for (const mboxPath of mboxFiles) {
+    // Process MBOX files SEQUENTIALLY (not in parallel) to reduce memory pressure
+    for (let fileIndex = 0; fileIndex < mboxFiles.length; fileIndex++) {
+      const mboxPath = mboxFiles[fileIndex];
+      
       try {
         const zipEntry = zip.file(mboxPath);
         if (!zipEntry) continue;
@@ -51,42 +61,101 @@ class GmailTakeoutParser {
         const folderName = this.extractFolderName(mboxPath);
 
         onProgress?.(
-          10 + (processedFiles / mboxFiles.length) * 80,
-          `Processing ${folderName}...`
+          10 + ((fileIndex + 0.5) / mboxFiles.length) * 80,
+          `Processing ${folderName} (${fileIndex + 1}/${mboxFiles.length})...`
         );
 
-        // Get file content
-        const content = await zipEntry.async('string');
+        // Get file content - this is the memory-intensive part
+        let content = await zipEntry.async('string');
         
         // Create a File object from the content
         const mboxFile = new File([content], `${folderName}.mbox`, {
           type: 'application/mbox',
         });
 
-        // Parse using MBOX parser
-        const parsedEmails = await mboxParser.parseMBOXFile(mboxFile);
+        // Clear the content string to free memory before parsing
+        // @ts-expect-error - intentionally reassigning to help GC
+        content = null;
 
-        // Set folder ID based on Gmail labels
-        const mappedEmails = parsedEmails.map((email) => ({
-          ...email,
-          folderId: this.mapGmailFolderToId(folderName),
-        }));
+        // Parse using streaming MBOX parser with deduplication
+        const folderMappedBatchCallback: EmailBatchCallback = async (emails, batchNumber) => {
+          // Deduplicate and add folder ID
+          const uniqueEmails: Omit<Email, 'id'>[] = [];
+          
+          for (const email of emails) {
+            const key = email.threadId || 
+              `${email.subject}|${email.sender}|${email.date.getTime()}`;
+            
+            if (!seenEmailKeys.has(key)) {
+              seenEmailKeys.add(key);
+              uniqueEmails.push({
+                ...email,
+                folderId: this.mapGmailFolderToId(folderName),
+              });
+            }
+          }
 
-        emails.push(...mappedEmails);
-        processedFiles++;
+          if (uniqueEmails.length > 0 && onBatch) {
+            await onBatch(uniqueEmails, globalBatchNumber);
+            globalBatchNumber++;
+          }
+          
+          totalEmailsParsed += uniqueEmails.length;
+        };
+
+        // Use streaming parser
+        await mboxParser.parseMBOXFileStreaming(
+          mboxFile,
+          (progress, message) => {
+            // Combine progress from individual file with overall progress
+            const baseProgress = 10 + (fileIndex / mboxFiles.length) * 80;
+            const fileContribution = (80 / mboxFiles.length) * (progress / 100);
+            onProgress?.(
+              Math.round(baseProgress + fileContribution),
+              `${folderName}: ${message}`
+            );
+          },
+          folderMappedBatchCallback
+        );
+
+        // Update progress after each file
+        onProgress?.(
+          10 + ((fileIndex + 1) / mboxFiles.length) * 80,
+          `Completed ${folderName} (${fileIndex + 1}/${mboxFiles.length})`
+        );
+
+        // Yield to allow garbage collection between files
+        await new Promise(resolve => setTimeout(resolve, 10));
+
       } catch (error) {
         console.warn(`Failed to parse ${mboxPath}:`, error);
       }
     }
 
-    onProgress?.(95, 'Processing complete, finalizing...');
+    onProgress?.(100, `Imported ${totalEmailsParsed} unique emails`);
 
-    // Deduplicate emails by message ID or subject+date combo
-    const uniqueEmails = this.deduplicateEmails(emails);
+    return totalEmailsParsed;
+  }
 
-    onProgress?.(100, `Imported ${uniqueEmails.length} unique emails`);
+  /**
+   * Parse a Gmail Takeout ZIP file (legacy method for backwards compatibility)
+   * For large files, prefer parseGmailTakeoutStreaming
+   */
+  async parseGmailTakeout(
+    file: File,
+    onProgress?: (progress: number, message: string) => void
+  ): Promise<Omit<Email, 'id'>[]> {
+    const emails: Omit<Email, 'id'>[] = [];
 
-    return uniqueEmails;
+    await this.parseGmailTakeoutStreaming(
+      file,
+      onProgress,
+      async (batch) => {
+        emails.push(...batch);
+      }
+    );
+
+    return emails;
   }
 
   /**
@@ -123,6 +192,7 @@ class GmailTakeoutParser {
 
   /**
    * Deduplicate emails based on message ID or subject+sender+date
+   * @deprecated Use streaming parser with inline deduplication instead
    */
   private deduplicateEmails(emails: Omit<Email, 'id'>[]): Omit<Email, 'id'>[] {
     const seen = new Map<string, Omit<Email, 'id'>>();
@@ -193,4 +263,3 @@ class GmailTakeoutParser {
 }
 
 export const gmailTakeoutParser = new GmailTakeoutParser();
-

@@ -53,6 +53,8 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
     if (file && validateFile(file)) {
       onFileSelect(file);
     }
+    // Reset the input so the same file can be selected again
+    e.target.value = '';
   }, [onFileSelect]);
 
   return (
@@ -109,4 +111,3 @@ export function FileDropzone({ onFileSelect, isProcessing }: FileDropzoneProps) 
     </div>
   );
 }
-
