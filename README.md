@@ -56,8 +56,6 @@ Explore years of archived emails offline. Automatically discover accounts, track
 
 ## 💻 Tech Stack
 
-| | |
-|---|---|
 | **Frontend** | React 19, TypeScript 5.9, Vite 7, Tailwind CSS 4 |
 | **State** | Zustand |
 | **Storage** | Dexie (IndexedDB) |
