@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom';
-import { 
-  Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2, 
+import {
+  Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2,
   Archive, Trash2, Star, BarChart3, RefreshCw, Newspaper, Paperclip, Shield,
   ChevronDown, ChevronRight, Home, Inbox, TrendingUp, Folder, Wrench,
-  Send, FileText, AlertTriangle,
+  Send, FileText, AlertTriangle, Menu, X,
   type LucideIcon
 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -155,6 +155,9 @@ export function Layout() {
     return defaultOpen;
   });
 
+  // Track mobile sidebar open state
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => {
       const next = new Set(prev);
@@ -194,12 +197,63 @@ export function Layout() {
 
   const hasData = emails.length > 0;
 
+  // Close sidebar when navigating on mobile
+  const handleNavClick = () => {
+    if (window.innerWidth < 1024) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
-      {/* Sidebar - Fixed */}
-      <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 flex flex-col flex-shrink-0">
-        {/* Logo Header */}
-        <div className="p-5 border-b border-slate-200 dark:border-slate-700">
+      {/* Mobile Header */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+        <div className="flex items-center justify-between px-4 h-14">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+              className="p-2 -ml-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              aria-label="Toggle menu"
+            >
+              {isMobileSidebarOpen ? (
+                <X className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+              ) : (
+                <Menu className="w-6 h-6 text-slate-600 dark:text-slate-400" />
+              )}
+            </button>
+            <Link to="/" className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                <Mail className="w-4 h-4 text-white" />
+              </div>
+              <span className="font-semibold text-slate-900 dark:text-white">
+                Email Analyzer
+              </span>
+            </Link>
+          </div>
+          <ThemeToggle variant="icon" />
+        </div>
+      </div>
+
+      {/* Mobile Overlay */}
+      {isMobileSidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar - Hidden on mobile by default, slides in as overlay */}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-40
+        w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700
+        flex flex-col flex-shrink-0
+        transform transition-transform duration-300 ease-in-out
+        lg:transform-none
+        ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        pt-14 lg:pt-0
+      `}>
+        {/* Logo Header - hidden on mobile since we have mobile header */}
+        <div className="hidden lg:block p-5 border-b border-slate-200 dark:border-slate-700">
           <Link to="/" className="flex items-center gap-3 group">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-shadow">
               <Mail className="w-5 h-5 text-white" />
@@ -216,6 +270,7 @@ export function Layout() {
           {/* Home/Upload Link */}
           <Link
             to="/"
+            onClick={handleNavClick}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-3 transition-all ${
               location.pathname === '/'
                 ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md shadow-blue-500/25'
@@ -268,6 +323,7 @@ export function Layout() {
                           <li key={to}>
                             <Link
                               to={to}
+                              onClick={handleNavClick}
                               className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
                                 isActive
                                   ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
@@ -317,8 +373,8 @@ export function Layout() {
       </aside>
 
       {/* Main content - Scrollable */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8 min-h-full">
+      <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
+        <div className="p-4 lg:p-8 min-h-full">
           <Outlet />
         </div>
       </main>
