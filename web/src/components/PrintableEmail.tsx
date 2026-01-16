@@ -1,5 +1,6 @@
 import React from 'react';
 import { format } from 'date-fns';
+import DOMPurify from 'dompurify';
 import type { Email, Attachment } from '../types';
 
 interface PrintableEmailProps {
@@ -359,11 +360,15 @@ function escapeHtml(text: string): string {
 }
 
 function sanitizeHtml(html: string): string {
-  // Basic sanitization - remove scripts
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/on\w+="[^"]*"/gi, '')
-    .replace(/on\w+='[^']*'/gi, '');
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'div', 'span', 'a', 'b', 'strong', 'i', 'em', 'u',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote',
+      'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'hr'
+    ],
+    ALLOWED_ATTR: ['href', 'src', 'alt', 'title', 'class', 'style', 'width', 'height'],
+    ALLOW_DATA_ATTR: false,
+  });
 }
 
 function formatFileSize(bytes: number): string {
