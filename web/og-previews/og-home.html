@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+    .og-card {
+      width: 1200px;
+      height: 630px;
+      background: #0f172a;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Subtle grid pattern */
+    .grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+
+    /* Top glow */
+    .glow-top {
+      position: absolute;
+      top: -120px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 600px;
+      height: 400px;
+      background: radial-gradient(ellipse, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+    }
+
+    /* Bottom accent line */
+    .accent-line {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, transparent, #3b82f6, #2563eb, #3b82f6, transparent);
+    }
+
+    .content {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 40px 60px;
+    }
+
+    /* Icon container */
+    .icon-wrap {
+      width: 100px;
+      height: 100px;
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      border-radius: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 40px rgba(59, 130, 246, 0.3), 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .icon-wrap svg {
+      width: 60px;
+      height: 60px;
+    }
+
+    .headline {
+      font-size: 95px;
+      font-weight: 800;
+      color: #f1f5f9;
+      letter-spacing: -0.03em;
+      text-align: center;
+      line-height: 1.05;
+    }
+
+    .tagline {
+      font-size: 23px;
+      font-weight: 400;
+      color: #94a3b8;
+      text-align: center;
+      max-width: 1000px;
+      line-height: 1.35;
+    }
+
+    .tags {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 4px;
+    }
+
+    .tag {
+      padding: 12px 28px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      border-radius: 999px;
+      font-size: 20px;
+      font-weight: 500;
+      color: #93c5fd;
+      letter-spacing: 0.01em;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="og-card">
+    <div class="grid-bg"></div>
+    <div class="glow-top"></div>
+    <div class="accent-line"></div>
+
+    <div class="content">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 100 100" fill="none">
+          <path d="M20 35 L50 55 L80 35 L80 70 L20 70 Z" fill="white" opacity="0.9"/>
+          <path d="M20 30 L50 50 L80 30" stroke="white" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+
+      <div class="headline">Email Archive Explorer</div>
+
+      <div class="tagline">
+        A privacy-first email archive analyzer that runs entirely in your browser. No data ever leaves your device.
+      </div>
+
+      <div class="tags">
+        <span class="tag">Account Detection</span>
+        <span class="tag">Purchase Tracking</span>
+        <span class="tag">Subscriptions</span>
+        <span class="tag">Analytics</span>
+        <span class="tag">100% Private</span>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

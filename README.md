@@ -31,6 +31,10 @@ Explore years of archived emails offline. Automatically discover accounts, track
 | 💬 **Threading** | Groups emails into conversations automatically |
 | 📇 **Contacts** | Builds contact list from senders with vCard export |
 | 🔒 **100% Private** | All processing happens locally—your data never leaves your device |
+| 🌙 **Dark Mode** | Toggle between light and dark themes |
+| 📱 **Mobile Responsive** | Slide-out sidebar navigation optimized for mobile devices |
+| ⚙️ **Custom Rules** | Create user-defined email filtering rules |
+| 💾 **Saved Searches** | Save and reuse frequently used search queries |
 | ⚡ **Performance** | Web Worker parsing, virtual scrolling, lazy loading for large archives |
 
 ---
