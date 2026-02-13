@@ -120,7 +120,11 @@ class BackupService {
 
     if (options.includeContacts) {
       onProgress?.(60, 'Exporting contacts...');
-      backup.contacts = await db.contacts.toArray();
+      const contacts = await db.contacts.toArray();
+      backup.contacts = contacts.map((c) => ({
+        ...c,
+        lastEmailDate: new Date(c.lastEmailDate),
+      })) as unknown as Contact[];
       backup.metadata.contactCount = backup.contacts.length;
     }
 
@@ -137,7 +141,11 @@ class BackupService {
 
     if (options.includeFolders) {
       onProgress?.(75, 'Exporting folders...');
-      backup.folders = await db.folders.toArray();
+      const folders = await db.folders.toArray();
+      backup.folders = folders.map((f) => ({
+        ...f,
+        createdAt: new Date(f.createdAt),
+      })) as unknown as Folder[];
       backup.metadata.folderCount = backup.folders.length;
     }
 
@@ -148,7 +156,7 @@ class BackupService {
         ...s,
         lastRenewalDate: new Date(s.lastRenewalDate),
         nextRenewalDate: s.nextRenewalDate ? new Date(s.nextRenewalDate) : undefined,
-        emailIds: JSON.parse(s.emailIds || '[]'),
+        emailIds: typeof s.emailIds === 'string' ? JSON.parse(s.emailIds) : (s.emailIds || []),
       })) as unknown as Subscription[];
       backup.metadata.subscriptionCount = backup.subscriptions.length;
     }
@@ -317,7 +325,11 @@ class BackupService {
     onProgress?.(65, 'Importing contacts...');
     const contacts = await readAndParse<Contact>('contacts');
     if (contacts && contacts.length > 0) {
-      await db.contacts.bulkPut(contacts);
+      const dbContacts = contacts.map((c) => ({
+        ...c,
+        lastEmailDate: new Date(c.lastEmailDate).getTime(),
+      }));
+      await db.contacts.bulkPut(dbContacts as any);
     }
 
     // Import calendar events
@@ -336,7 +348,11 @@ class BackupService {
     onProgress?.(80, 'Importing folders...');
     const folders = await readAndParse<Folder>('folders');
     if (folders && folders.length > 0) {
-      await db.folders.bulkPut(folders);
+      const dbFolders = folders.map((f) => ({
+        ...f,
+        createdAt: new Date(f.createdAt).getTime(),
+      }));
+      await db.folders.bulkPut(dbFolders as any);
     }
 
     // Import subscriptions

@@ -64,6 +64,11 @@ interface SearchToken {
  * - in:inbox / in:archive / in:trash
  * - Free text for general search
  */
+// Limits to prevent ReDoS and performance issues
+const MAX_QUERY_LENGTH = 500;
+const MAX_TERM_LENGTH = 100;
+const MAX_SEARCH_TERMS = 10;
+
 export function parseSearchQuery(query: string): ParsedSearch {
   const result: ParsedSearch = {
     freeText: '',
@@ -71,6 +76,11 @@ export function parseSearchQuery(query: string): ParsedSearch {
 
   if (!query || !query.trim()) {
     return result;
+  }
+
+  // Truncate excessively long queries
+  if (query.length > MAX_QUERY_LENGTH) {
+    query = query.slice(0, MAX_QUERY_LENGTH);
   }
 
   const tokens = tokenize(query);
@@ -354,9 +364,12 @@ export function highlightMatches(text: string, searchTerms: string[]): string {
     return text;
   }
 
+  // Apply term count and length limits
+  const limitedTerms = searchTerms.slice(0, MAX_SEARCH_TERMS);
   let result = text;
-  for (const term of searchTerms) {
-    if (!term) continue;
+  for (const rawTerm of limitedTerms) {
+    if (!rawTerm) continue;
+    const term = rawTerm.length > MAX_TERM_LENGTH ? rawTerm.slice(0, MAX_TERM_LENGTH) : rawTerm;
     const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
     result = result.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-700">$1</mark>');
   }
@@ -385,6 +398,9 @@ export function getSearchTerms(search: ParsedSearch): string[] {
   if (search.subject) terms.push(search.subject);
   if (search.body) terms.push(search.body);
 
-  return terms;
+  // Limit term count and length to prevent ReDoS
+  return terms
+    .slice(0, MAX_SEARCH_TERMS)
+    .map(t => t.length > MAX_TERM_LENGTH ? t.slice(0, MAX_TERM_LENGTH) : t);
 }
 

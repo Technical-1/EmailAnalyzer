@@ -10,6 +10,8 @@ import {
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import { ThemeToggle } from './ThemeToggle';
+import { KeyboardShortcutsDialog } from './KeyboardShortcutsDialog';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import jkLogo from '../assets/jk-logo.svg';
 
 interface NavItem {
@@ -158,6 +160,11 @@ export function Layout() {
   // Track mobile sidebar open state
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onCloseSidebar: () => setIsMobileSidebarOpen(false),
+  });
+
   const toggleSection = (sectionId: string) => {
     setOpenSections(prev => {
       const next = new Set(prev);
@@ -243,7 +250,7 @@ export function Layout() {
       )}
 
       {/* Sidebar - Hidden on mobile by default, slides in as overlay */}
-      <aside className={`
+      <aside aria-label="Sidebar navigation" className={`
         fixed lg:static inset-y-0 left-0 z-40
         w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700
         flex flex-col flex-shrink-0
@@ -266,7 +273,7 @@ export function Layout() {
           </Link>
         </div>
 
-        <nav className="flex-1 p-3 overflow-y-auto">
+        <nav className="flex-1 p-3 overflow-y-auto" aria-label="Main navigation">
           {/* Home/Upload Link */}
           <Link
             to="/"
@@ -359,15 +366,24 @@ export function Layout() {
         <div className="p-4 border-t border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <ThemeToggle variant="icon" />
-            <a 
-              href="https://jacobkanfer.com" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-            >
-              <img src={jkLogo} alt="JK" className="w-5 h-5 opacity-60 hover:opacity-100 transition-opacity" />
-              <span>Jacob Kanfer</span>
-            </a>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/privacy"
+                onClick={handleNavClick}
+                className="text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                Privacy
+              </Link>
+              <a
+                href="https://jacobkanfer.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+              >
+                <img src={jkLogo} alt="JK" className="w-5 h-5 opacity-60 hover:opacity-100 transition-opacity" />
+                <span>Jacob Kanfer</span>
+              </a>
+            </div>
           </div>
         </div>
       </aside>
@@ -378,6 +394,9 @@ export function Layout() {
           <Outlet />
         </div>
       </main>
+
+      {/* Keyboard shortcuts dialog */}
+      <KeyboardShortcutsDialog />
     </div>
   );
 }

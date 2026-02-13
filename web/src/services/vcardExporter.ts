@@ -127,6 +127,7 @@ class VCardExporter {
       email,
       phone,
       emailCount: 0,
+      lastEmailDate: new Date(),
     };
     return this.contactToVCard(contact);
   }

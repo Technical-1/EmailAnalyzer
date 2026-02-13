@@ -22,6 +22,8 @@ describe('BackupService', () => {
         includeContacts: true,
         includeCalendarEvents: true,
         includeFolders: true,
+        includeSubscriptions: true,
+        includeNewsletters: true,
         encrypt: false,
       });
 
@@ -52,6 +54,8 @@ describe('BackupService', () => {
         includeContacts: false,
         includeCalendarEvents: false,
         includeFolders: false,
+        includeSubscriptions: false,
+        includeNewsletters: false,
         encrypt: false,
       });
 
@@ -99,6 +103,8 @@ describe('BackupService', () => {
         includeContacts: false,
         includeCalendarEvents: false,
         includeFolders: false,
+        includeSubscriptions: false,
+        includeNewsletters: false,
         encrypt: false,
         dateRange: {
           start: new Date(oneWeekAgo),
@@ -121,6 +127,8 @@ describe('BackupService', () => {
           includeContacts: true,
           includeCalendarEvents: true,
           includeFolders: true,
+          includeSubscriptions: true,
+          includeNewsletters: true,
           encrypt: false,
         },
         (progress) => progressUpdates.push(progress)
@@ -140,6 +148,8 @@ describe('BackupService', () => {
         includeContacts: true,
         includeCalendarEvents: true,
         includeFolders: true,
+        includeSubscriptions: true,
+        includeNewsletters: true,
         encrypt: false,
       });
 
@@ -177,6 +187,8 @@ describe('BackupService', () => {
         includeContacts: false,
         includeCalendarEvents: false,
         includeFolders: false,
+        includeSubscriptions: false,
+        includeNewsletters: false,
         encrypt: false,
       });
 
@@ -202,6 +214,8 @@ describe('BackupService', () => {
         includeContacts: true,
         includeCalendarEvents: true,
         includeFolders: true,
+        includeSubscriptions: true,
+        includeNewsletters: true,
         encrypt: false,
       });
 
@@ -236,7 +250,8 @@ describe('BackupService', () => {
         name: 'Test',
         email: 'test@test.com',
         emailCount: 1,
-      });
+        lastEmailDate: Date.now(),
+      } as any);
 
       // Verify data exists
       expect(await db.emails.count()).toBe(1);

@@ -61,7 +61,7 @@ export function DraggableEmailCard({
 
   return (
     <div
-      ref={drag}
+      ref={drag as unknown as React.Ref<HTMLDivElement>}
       className={`relative ${isDragging ? 'opacity-50' : ''} ${
         isSelected ? 'ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900 rounded-xl' : ''
       }`}
@@ -84,7 +84,7 @@ export function DraggableEmailCard({
       <div className={onSelect ? 'pl-8' : ''}>
         <EmailCard
           email={email}
-          onClick={handleClick}
+          onClick={() => handleClick({} as React.MouseEvent)}
         />
       </div>
 

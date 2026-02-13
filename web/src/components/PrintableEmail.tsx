@@ -1,7 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import type { Email, Attachment } from '../types';
+import type { Email } from '../types';
 
 interface PrintableEmailProps {
   email: Email;

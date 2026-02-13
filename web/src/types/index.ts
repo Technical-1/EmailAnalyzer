@@ -5,6 +5,7 @@ export interface Email {
   sender: string;
   senderName?: string;
   recipients: string[];
+  cc?: string[];
   date: Date;
   body: string;
   htmlBody?: string;
@@ -60,6 +61,7 @@ export interface Contact {
   name: string;
   email: string;
   phone?: string;
+  organization?: string;
   notes?: string;
   tags?: string[];
   emailCount: number;

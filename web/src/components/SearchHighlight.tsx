@@ -6,6 +6,9 @@ interface SearchHighlightProps {
   className?: string;
 }
 
+const MAX_TERMS = 10;
+const MAX_TERM_LENGTH = 100;
+
 /**
  * Component to highlight search terms within text
  */
@@ -15,8 +18,11 @@ export function SearchHighlight({ text, searchTerms, className = '' }: SearchHig
       return text;
     }
 
-    // Filter out empty terms
-    const terms = searchTerms.filter((t) => t.trim().length > 0);
+    // Filter out empty terms and apply length/count limits
+    const terms = searchTerms
+      .filter((t) => t.trim().length > 0)
+      .slice(0, MAX_TERMS)
+      .map(t => t.length > MAX_TERM_LENGTH ? t.slice(0, MAX_TERM_LENGTH) : t);
     if (terms.length === 0) {
       return text;
     }
@@ -61,7 +67,10 @@ export function highlightText(text: string, searchTerms: string[]): string {
     return text;
   }
 
-  const terms = searchTerms.filter((t) => t.trim().length > 0);
+  const terms = searchTerms
+    .filter((t) => t.trim().length > 0)
+    .slice(0, MAX_TERMS)
+    .map(t => t.length > MAX_TERM_LENGTH ? t.slice(0, MAX_TERM_LENGTH) : t);
   if (terms.length === 0) {
     return text;
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import { create } from 'zustand';
+import { logger } from '../utils/logger';
 
 // Types
 interface UndoAction {
@@ -18,7 +19,7 @@ interface UndoToastState {
 }
 
 // Store for managing undo toasts
-export const useUndoToastStore = create<UndoToastState>((set, get) => ({
+export const useUndoToastStore = create<UndoToastState>((set) => ({
   toasts: [],
   
   addToast: (toast) => {
@@ -93,7 +94,7 @@ function ToastItem({ toast, onDismiss }: ToastItemProps) {
     try {
       await toast.onUndo();
     } catch (error) {
-      console.error('Undo failed:', error);
+      logger.error('Undo failed:', error);
     } finally {
       onDismiss();
     }
@@ -139,7 +140,7 @@ export function UndoToastContainer() {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
+    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2 max-w-sm" role="status" aria-live="polite">
       {toasts.map((toast) => (
         <ToastItem
           key={toast.id}

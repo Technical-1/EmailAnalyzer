@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Download, Trash2, Database, AlertTriangle, FolderPlus, Archive, Plus } from 'lucide-react';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
+import { logger } from '../utils/logger';
 
 export function SettingsPage() {
   const { 
@@ -29,7 +30,7 @@ export function SettingsPage() {
     try {
       await downloadExport();
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
     } finally {
       setIsExporting(false);
     }
@@ -55,7 +56,7 @@ export function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
     } finally {
       setIsExporting(false);
     }
@@ -69,7 +70,7 @@ export function SettingsPage() {
       await createFolder(newFolderName.trim());
       setNewFolderName('');
     } catch (error) {
-      console.error('Failed to create folder:', error);
+      logger.error('Failed to create folder:', error);
     } finally {
       setIsCreatingFolder(false);
     }
@@ -80,7 +81,7 @@ export function SettingsPage() {
       await emptyTrash();
       setShowConfirmEmptyTrash(false);
     } catch (error) {
-      console.error('Failed to empty trash:', error);
+      logger.error('Failed to empty trash:', error);
     }
   };
 
@@ -107,7 +108,7 @@ export function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
     } finally {
       setIsExporting(false);
     }
@@ -119,7 +120,7 @@ export function SettingsPage() {
       await clearAll();
       setShowConfirmClear(false);
     } catch (error) {
-      console.error('Failed to clear data:', error);
+      logger.error('Failed to clear data:', error);
     } finally {
       setIsClearing(false);
     }

@@ -13,14 +13,14 @@ export function DroppableFolderItem({
   folder,
   children,
   onDrop,
-  isActive = false,
+  isActive: _isActive = false,
 }: DroppableFolderItemProps) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: DRAGGABLE_EMAIL_TYPE,
     drop: (item: DragItem) => {
       onDrop(item.emailIds, folder.id);
     },
-    canDrop: (item: DragItem) => {
+    canDrop: (_item: DragItem) => {
       // Can't drop on the same folder
       return true;
     },
@@ -38,7 +38,7 @@ export function DroppableFolderItem({
 
   return (
     <div
-      ref={drop}
+      ref={drop as unknown as React.Ref<HTMLDivElement>}
       className={`transition-colors rounded-lg ${dropStyle}`}
     >
       {children}

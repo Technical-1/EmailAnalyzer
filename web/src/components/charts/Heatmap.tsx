@@ -52,7 +52,7 @@ export function Heatmap({ data }: HeatmapProps) {
         {/* Hour labels */}
         <div className="flex mb-1">
           <div className="w-10 flex-shrink-0" />
-          {HOURS.filter((_, i) => i % 3 === 0).map((hour, i) => (
+          {HOURS.filter((_, i) => i % 3 === 0).map((hour) => (
             <div
               key={hour}
               className="text-[10px] text-slate-500 dark:text-slate-400 text-center"

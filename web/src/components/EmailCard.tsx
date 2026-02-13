@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { format } from 'date-fns';
 import { Star, Mail, MailOpen, ShoppingBag, UserCheck, Archive, Trash2, Circle } from 'lucide-react';
 import type { Email } from '../types';
@@ -10,7 +11,7 @@ interface EmailCardProps {
   onClick: () => void;
 }
 
-export function EmailCard({ email, onClick }: EmailCardProps) {
+export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardProps) {
   const { toggleEmailStar, toggleEmailRead, archiveEmail, deleteEmail, restoreEmail } = useAppStore();
   
   const TypeIcon = email.emailType === 'purchase' 
@@ -37,11 +38,13 @@ export function EmailCard({ email, onClick }: EmailCardProps) {
   return (
     <div
       onClick={onClick}
+      role="listitem"
+      aria-label={`${!email.isRead ? 'Unread: ' : ''}${email.subject || '(No Subject)'} from ${email.sender}`}
       className={`
         group rounded-lg p-4 cursor-pointer transition-all
         border border-slate-200 dark:border-slate-700 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-600
-        ${!email.isRead 
-          ? 'bg-blue-50 dark:bg-blue-950/30 border-l-4 border-l-blue-500' 
+        ${!email.isRead
+          ? 'bg-blue-50 dark:bg-blue-950/30 border-l-4 border-l-blue-500'
           : 'bg-white dark:bg-slate-800'
         }
       `}
@@ -148,5 +151,5 @@ export function EmailCard({ email, onClick }: EmailCardProps) {
       </div>
     </div>
   );
-}
+});
 

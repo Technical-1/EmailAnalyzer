@@ -1,4 +1,5 @@
 import type { SavedSearch } from '../types';
+import { logger } from '../utils/logger';
 
 const STORAGE_KEY = 'email-analyzer-saved-searches';
 
@@ -21,7 +22,7 @@ class SavedSearchService {
         lastUsed: s.lastUsed ? new Date(s.lastUsed) : undefined,
       }));
     } catch (error) {
-      console.error('Failed to load saved searches:', error);
+      logger.error('Failed to load saved searches:', error);
       return [];
     }
   }
@@ -100,7 +101,7 @@ class SavedSearchService {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(searches));
     } catch (error) {
-      console.error('Failed to save searches:', error);
+      logger.error('Failed to save searches:', error);
     }
   }
 }

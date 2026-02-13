@@ -200,13 +200,6 @@ class SubscriptionDetector {
       { symbol: 'JPY', pattern: /¥\s*([\d,]+)/i },
     ];
 
-    const contextPatterns = [
-      /(?:subscription|membership)\s+(?:fee|price|cost)[:\s]+/i,
-      /(?:monthly|annual|yearly)\s+(?:fee|price|cost)[:\s]+/i,
-      /(?:charged|billed)[:\s]+/i,
-      /(?:total|amount)[:\s]+/i,
-    ];
-
     for (const currencyInfo of currencyPatterns) {
       const match = text.match(currencyInfo.pattern);
       if (match) {

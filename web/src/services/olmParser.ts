@@ -45,8 +45,30 @@ class OLMParser {
         message: 'Extracting OLM archive...',
       });
 
+      // Validate file size before loading (500MB compressed limit)
+      const MAX_COMPRESSED_SIZE = 500 * 1024 * 1024;
+      if (file.size > MAX_COMPRESSED_SIZE) {
+        throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
+      }
+
       const zip = await JSZip.loadAsync(file);
-      
+
+      // Check decompressed size to guard against zip bombs (2GB limit)
+      // JSZip stores uncompressedSize in internal _data property (not in public types)
+      const MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024;
+      let totalDecompressedSize = 0;
+      for (const entry of Object.values(zip.files)) {
+        if (!entry.dir) {
+          const entryData = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+          if (entryData && typeof entryData.uncompressedSize === 'number') {
+            totalDecompressedSize += entryData.uncompressedSize;
+          }
+        }
+      }
+      if (totalDecompressedSize > MAX_DECOMPRESSED_SIZE) {
+        throw new Error(`Archive decompressed size exceeds 2GB limit. This may be a malicious file.`);
+      }
+
       onProgress?.({
         stage: 'extracting',
         progress: 100,
@@ -292,14 +314,24 @@ class OLMParser {
         return null;
       }
 
+      // Sanitize field lengths to prevent memory issues
+      const MAX_SUBJECT_LEN = 1000;
+      const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB
+      const MAX_EMAIL_LEN = 254; // RFC 5321
+
+      const rawSubject = subject || '(No Subject)';
+      const rawBody = body || preview || '';
+      const sanitizedSender = cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN);
+      const sanitizedRecipients = recipients.map(r => r.slice(0, MAX_EMAIL_LEN)).slice(0, 1000);
+
       return {
-        subject: subject || '(No Subject)',
-        sender: cleanEmailAddress(sender),
+        subject: rawSubject.length > MAX_SUBJECT_LEN ? rawSubject.slice(0, MAX_SUBJECT_LEN) : rawSubject,
+        sender: sanitizedSender,
         senderName: senderName || undefined,
-        recipients,
+        recipients: sanitizedRecipients,
         date: isNaN(date.getTime()) ? new Date() : date,
-        body: body || preview || '',
-        htmlBody: htmlBody || undefined,
+        body: rawBody.length > MAX_BODY_LEN ? rawBody.slice(0, MAX_BODY_LEN) : rawBody,
+        htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : (htmlBody || undefined),
         attachments: [],
         size: xmlContent.length,
         isRead,
@@ -541,8 +573,6 @@ class OLMParser {
           lastRenewalDate: isNewerEmail ? email.date : existingSub.lastRenewalDate,
           // Keep existing amount if new email doesn't have one, or if it's an older email
           monthlyAmount: shouldUpdateAmount ? subResult.amount : existingSub.monthlyAmount,
-          // Update frequency only if detected and newer
-          frequency: (isNewerEmail && subResult.frequency) ? subResult.frequency : existingSub.frequency,
         });
       } else {
         // Create new subscription

@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { vcardExporter } from '../../services/vcardExporter';
 import type { Contact } from '../../types';
 
+const testDate = new Date('2024-01-01');
+
 describe('VCardExporter', () => {
   describe('contactToVCard', () => {
     it('should create a valid vCard for a contact with name and email', () => {
@@ -9,6 +11,7 @@ describe('VCardExporter', () => {
         name: 'John Doe',
         email: 'john@example.com',
         emailCount: 10,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -27,6 +30,7 @@ describe('VCardExporter', () => {
         name: '',
         email: 'unknown@example.com',
         emailCount: 5,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -40,6 +44,7 @@ describe('VCardExporter', () => {
         name: 'Madonna',
         email: 'madonna@example.com',
         emailCount: 1,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -53,6 +58,7 @@ describe('VCardExporter', () => {
         name: 'Mary Jane Watson',
         email: 'mj@example.com',
         emailCount: 3,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -66,6 +72,7 @@ describe('VCardExporter', () => {
         name: 'John; Doe, Jr.',
         email: 'john@example.com',
         emailCount: 1,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -79,6 +86,7 @@ describe('VCardExporter', () => {
         email: 'john@example.com',
         phone: '+1-555-123-4567',
         emailCount: 2,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -92,6 +100,7 @@ describe('VCardExporter', () => {
         email: 'john@example.com',
         organization: 'Acme Corp',
         emailCount: 5,
+        lastEmailDate: testDate,
       };
 
       const vcard = vcardExporter.contactToVCard(contact);
@@ -103,8 +112,8 @@ describe('VCardExporter', () => {
   describe('contactsToVCard', () => {
     it('should combine multiple contacts into one vCard file', () => {
       const contacts: Contact[] = [
-        { name: 'John Doe', email: 'john@example.com', emailCount: 5 },
-        { name: 'Jane Smith', email: 'jane@example.com', emailCount: 3 },
+        { name: 'John Doe', email: 'john@example.com', emailCount: 5, lastEmailDate: testDate },
+        { name: 'Jane Smith', email: 'jane@example.com', emailCount: 3, lastEmailDate: testDate },
       ];
 
       const vcard = vcardExporter.contactsToVCard(contacts);
@@ -140,4 +149,3 @@ describe('VCardExporter', () => {
     });
   });
 });
-

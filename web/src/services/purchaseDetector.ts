@@ -16,22 +16,6 @@ class PurchaseDetector {
     /^transaction receipt/i,
   ];
 
-  // Currency symbols and patterns
-  private readonly currencyPatterns = {
-    USD: { symbol: '$', pattern: /\$\s*([\d,]+\.\d{2})/ },
-    EUR: { symbol: '€', pattern: /€\s*([\d\s,]+[.,]\d{2})/ },
-    GBP: { symbol: '£', pattern: /£\s*([\d,]+\.\d{2})/ },
-    JPY: { symbol: '¥', pattern: /¥\s*([\d,]+)/ },
-    CAD: { symbol: 'C$', pattern: /C\$\s*([\d,]+\.\d{2})/ },
-    AUD: { symbol: 'A$', pattern: /A\$\s*([\d,]+\.\d{2})/ },
-    CHF: { symbol: 'CHF', pattern: /CHF\s*([\d',]+\.\d{2})/ },
-    CNY: { symbol: '¥', pattern: /(?:CN)?¥\s*([\d,]+\.\d{2})/ },
-    INR: { symbol: '₹', pattern: /₹\s*([\d,]+\.\d{2})/ },
-    KRW: { symbol: '₩', pattern: /₩\s*([\d,]+)/ },
-    MXN: { symbol: 'MX$', pattern: /MX\$\s*([\d,]+\.\d{2})/ },
-    BRL: { symbol: 'R$', pattern: /R\$\s*([\d,]+[.,]\d{2})/ },
-  };
-
   // Strong body patterns that indicate actual purchase confirmation (multi-currency)
   private readonly strongBodyPatterns = [
     /order\s+(?:total|summary)[:\s]+[$€£¥₹₩]\s*[\d,]+[.,]?\d*/i,

@@ -1,5 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
+import { SYSTEM_FOLDERS } from '../types';
+
+const SYSTEM_FOLDER_IDS: Set<string> = new Set(Object.values(SYSTEM_FOLDERS));
 
 // Database email type (with id required)
 interface DBEmail extends Omit<Email, 'date'> {
@@ -391,7 +394,7 @@ export const ensureFolderExists = async (folderId: string, folderName?: string):
   await db.folders.add({
     id: folderId,
     name: folderName || folderId.charAt(0).toUpperCase() + folderId.slice(1).replace(/-/g, ' '),
-    isSystem: ['inbox', 'sent', 'drafts', 'spam', 'archive', 'trash'].includes(folderId),
+    isSystem: SYSTEM_FOLDER_IDS.has(folderId),
     createdAt: Date.now(),
   });
   
@@ -411,7 +414,7 @@ export const ensureFoldersExist = async (folderIds: string[]): Promise<void> => 
     await db.folders.add({
       id: folderId,
       name: folderId.charAt(0).toUpperCase() + folderId.slice(1).replace(/-/g, ' '),
-      isSystem: ['inbox', 'sent', 'drafts', 'spam', 'archive', 'trash'].includes(folderId),
+      isSystem: SYSTEM_FOLDER_IDS.has(folderId),
       createdAt: Date.now(),
     });
   }
@@ -420,7 +423,7 @@ export const ensureFoldersExist = async (folderIds: string[]): Promise<void> => 
 export const deleteFolder = async (id: string): Promise<void> => {
   // Move all emails from this folder back to inbox before deleting
   const emails = await db.emails.where('folderId').equals(id).toArray();
-  await Promise.all(emails.map(e => db.emails.update(e.id, { folderId: 'inbox' })));
+  await Promise.all(emails.map(e => db.emails.update(e.id, { folderId: SYSTEM_FOLDERS.INBOX })));
   await db.folders.delete(id);
 };
 
@@ -437,12 +440,12 @@ const dbFolderToFolder = (dbFolder: DBFolder): Folder => ({
 export const initializeSystemFolders = async (): Promise<void> => {
   const existingFolders = await db.folders.toArray();
   const systemFolders = [
-    { id: 'inbox', name: 'Inbox' },
-    { id: 'sent', name: 'Sent' },
-    { id: 'drafts', name: 'Drafts' },
-    { id: 'spam', name: 'Spam' },
-    { id: 'archive', name: 'Archive' },
-    { id: 'trash', name: 'Trash' },
+    { id: SYSTEM_FOLDERS.INBOX, name: 'Inbox' },
+    { id: SYSTEM_FOLDERS.SENT, name: 'Sent' },
+    { id: SYSTEM_FOLDERS.DRAFTS, name: 'Drafts' },
+    { id: SYSTEM_FOLDERS.SPAM, name: 'Spam' },
+    { id: SYSTEM_FOLDERS.ARCHIVE, name: 'Archive' },
+    { id: SYSTEM_FOLDERS.TRASH, name: 'Trash' },
   ];
   
   for (const folder of systemFolders) {
@@ -481,10 +484,11 @@ export const updateSubscription = async (
   id: number,
   updates: Partial<Pick<Subscription, 'isActive' | 'emailIds' | 'monthlyAmount' | 'lastRenewalDate'>>
 ): Promise<void> => {
-  const updateData: Record<string, unknown> = { ...updates };
-  if (updates.lastRenewalDate) {
-    updateData.lastRenewalDate = updates.lastRenewalDate.getTime();
-  }
+  const updateData: Partial<{ isActive: boolean; emailIds: number[]; monthlyAmount: number; lastRenewalDate: number }> = {};
+  if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
+  if (updates.emailIds !== undefined) updateData.emailIds = updates.emailIds;
+  if (updates.monthlyAmount !== undefined) updateData.monthlyAmount = updates.monthlyAmount;
+  if (updates.lastRenewalDate) updateData.lastRenewalDate = updates.lastRenewalDate.getTime();
   await db.subscriptions.update(id, updateData);
 };
 
@@ -517,10 +521,10 @@ export const updateNewsletter = async (
   id: number,
   updates: Partial<Pick<Newsletter, 'emailCount' | 'lastEmailDate' | 'unsubscribeLink'>>
 ): Promise<void> => {
-  const updateData: Record<string, unknown> = { ...updates };
-  if (updates.lastEmailDate) {
-    updateData.lastEmailDate = updates.lastEmailDate.getTime();
-  }
+  const updateData: Partial<{ emailCount: number; lastEmailDate: number; unsubscribeLink: string }> = {};
+  if (updates.emailCount !== undefined) updateData.emailCount = updates.emailCount;
+  if (updates.lastEmailDate) updateData.lastEmailDate = updates.lastEmailDate.getTime();
+  if (updates.unsubscribeLink !== undefined) updateData.unsubscribeLink = updates.unsubscribeLink;
   await db.newsletters.update(id, updateData);
 };
 

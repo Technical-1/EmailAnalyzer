@@ -56,7 +56,7 @@ export function SpendingChart({ data }: SpendingChartProps) {
             color: '#f1f5f9',
           }}
           labelStyle={{ color: '#94a3b8' }}
-          formatter={(value: number) => [`$${value.toFixed(2)}`, 'Spending']}
+          formatter={(value: number | undefined) => [`$${(value ?? 0).toFixed(2)}`, 'Spending']}
         />
         <Area
           type="monotone"

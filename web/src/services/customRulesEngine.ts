@@ -1,4 +1,5 @@
 import type { Email, CustomRule, RuleCondition, RuleAction } from '../types';
+import { logger } from '../utils/logger';
 
 const STORAGE_KEY = 'email-analyzer-custom-rules';
 
@@ -20,7 +21,7 @@ class CustomRulesEngine {
         createdAt: new Date(r.createdAt),
       }));
     } catch (error) {
-      console.error('Failed to load custom rules:', error);
+      logger.error('Failed to load custom rules:', error);
       return [];
     }
   }
@@ -223,7 +224,7 @@ class CustomRulesEngine {
         createdAt: new Date(),
       };
     } catch (error) {
-      console.error('Failed to parse rule string:', error);
+      logger.error('Failed to parse rule string:', error);
       return null;
     }
   }
@@ -261,7 +262,7 @@ class CustomRulesEngine {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(rules));
     } catch (error) {
-      console.error('Failed to save custom rules:', error);
+      logger.error('Failed to save custom rules:', error);
     }
   }
 }

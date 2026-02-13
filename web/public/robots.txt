@@ -1,0 +1,7 @@
+# Email Archive Explorer
+# https://email-analyzer-eta.vercel.app
+
+User-agent: *
+Allow: /
+
+Sitemap: https://email-analyzer-eta.vercel.app/sitemap.xml

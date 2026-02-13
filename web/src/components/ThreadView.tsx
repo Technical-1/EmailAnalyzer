@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronUp, Mail, MailOpen, Paperclip, Star, Users } from 'lucide-react';
 import type { Email, EmailThread } from '../types';
@@ -88,7 +88,7 @@ export function ThreadView({ thread, onEmailClick, initialExpanded = false }: Th
       {isExpanded && (
         <div className="border-t border-slate-200 dark:border-slate-700">
           {/* Older emails */}
-          {olderEmails.map((email, index) => (
+          {olderEmails.map((email) => (
             <ThreadEmailItem
               key={email.id}
               email={email}
@@ -193,7 +193,7 @@ interface ThreadEmailItemProps {
   expanded?: boolean;
 }
 
-function ThreadEmailItem({ email, isLast, onClick, onToggleStar, onToggleRead, expanded }: ThreadEmailItemProps) {
+function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmailItemProps) {
   const [showFull, setShowFull] = useState(expanded);
 
   return (

@@ -1,14 +1,26 @@
 import type { LucideIcon } from 'lucide-react';
 
+const colorMap: Record<string, string> = {
+  blue: 'text-blue-500',
+  orange: 'text-orange-500',
+  cyan: 'text-cyan-500',
+  green: 'text-green-500',
+  red: 'text-red-500',
+  purple: 'text-purple-500',
+};
+
 interface StatsCardProps {
   title: string;
   value: string | number;
   subtitle?: string;
   icon: LucideIcon;
+  color?: string;
   iconColor?: string;
 }
 
-export function StatsCard({ title, value, subtitle, icon: Icon, iconColor = 'text-blue-500' }: StatsCardProps) {
+export function StatsCard({ title, value, subtitle, icon: Icon, color, iconColor }: StatsCardProps) {
+  const resolvedColor = iconColor || (color && colorMap[color]) || 'text-blue-500';
+
   return (
     <div className="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-200 dark:border-slate-700">
       <div className="flex items-start justify-between">
@@ -25,7 +37,7 @@ export function StatsCard({ title, value, subtitle, icon: Icon, iconColor = 'tex
             </p>
           )}
         </div>
-        <div className={`p-3 rounded-lg bg-slate-100 dark:bg-slate-700 ${iconColor}`}>
+        <div className={`p-3 rounded-lg bg-slate-100 dark:bg-slate-700 ${resolvedColor}`}>
           <Icon className="w-6 h-6" />
         </div>
       </div>

@@ -2,15 +2,14 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { 
-  Paperclip, 
-  Image, 
-  FileText, 
-  Archive, 
+  Paperclip,
+  Image,
+  FileText,
+  Archive,
   Download,
   Search,
   Grid,
   List,
-  Filter,
   Eye
 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -54,8 +53,8 @@ export function AttachmentsPage() {
         const type = attachmentService.getAttachmentType(att.mimeType);
         if (filter === 'images' && type !== 'image') return false;
         if (filter === 'documents' && type !== 'document' && type !== 'pdf') return false;
-        if (filter === 'archives' && type !== 'archive') return false;
-        if (filter === 'other' && !['image', 'document', 'pdf', 'archive'].includes(type)) return false;
+        if (filter === 'archives' && type !== 'other') return false;
+        if (filter === 'other' && !['image', 'document', 'pdf'].includes(type)) return false;
       }
       
       // Search filter
@@ -383,7 +382,7 @@ export function AttachmentsPage() {
               </div>
             </div>
             <div className="p-4 max-h-[70vh] overflow-auto">
-              <AttachmentPreview attachment={selectedAttachment} />
+              <AttachmentPreview attachment={selectedAttachment} onClose={() => setSelectedAttachment(null)} />
             </div>
           </div>
         </div>

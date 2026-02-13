@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { getEmailBody } from '../db/database';
+import { logger } from '../utils/logger';
 
 interface EmailBody {
   body: string;
@@ -72,7 +73,7 @@ export async function prefetchEmailBody(emailId: number): Promise<void> {
   try {
     await getEmailBody(emailId);
   } catch (err) {
-    console.warn('Failed to prefetch email body:', err);
+    logger.warn('Failed to prefetch email body:', err);
   }
 }
 

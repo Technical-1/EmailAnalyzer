@@ -27,7 +27,29 @@ class GmailTakeoutParser {
 
     onProgress?.(0, 'Opening Gmail Takeout archive...');
 
+    // Validate file size before loading (500MB compressed limit)
+    const MAX_COMPRESSED_SIZE = 500 * 1024 * 1024;
+    if (file.size > MAX_COMPRESSED_SIZE) {
+      throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
+    }
+
     const zip = await JSZip.loadAsync(file);
+
+    // Check decompressed size to guard against zip bombs (2GB limit)
+    // JSZip stores uncompressedSize in internal _data property (not in public types)
+    const MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024;
+    let totalDecompressedSize = 0;
+    for (const entry of Object.values(zip.files)) {
+      if (!entry.dir) {
+        const entryData = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+        if (entryData && typeof entryData.uncompressedSize === 'number') {
+          totalDecompressedSize += entryData.uncompressedSize;
+        }
+      }
+    }
+    if (totalDecompressedSize > MAX_DECOMPRESSED_SIZE) {
+      throw new Error(`Archive decompressed size exceeds 2GB limit. This may be a malicious file.`);
+    }
     
     // Find all MBOX files in the archive
     const mboxFiles: string[] = [];
@@ -78,7 +100,7 @@ class GmailTakeoutParser {
         content = null;
 
         // Parse using streaming MBOX parser with deduplication
-        const folderMappedBatchCallback: EmailBatchCallback = async (emails, batchNumber) => {
+        const folderMappedBatchCallback: EmailBatchCallback = async (emails) => {
           // Deduplicate and add folder ID
           const uniqueEmails: Omit<Email, 'id'>[] = [];
           
@@ -188,27 +210,6 @@ class GmailTakeoutParser {
 
     // Custom labels become custom folders
     return `gmail-${folderName.toLowerCase().replace(/\s+/g, '-')}`;
-  }
-
-  /**
-   * Deduplicate emails based on message ID or subject+sender+date
-   * @deprecated Use streaming parser with inline deduplication instead
-   */
-  private deduplicateEmails(emails: Omit<Email, 'id'>[]): Omit<Email, 'id'>[] {
-    const seen = new Map<string, Omit<Email, 'id'>>();
-
-    for (const email of emails) {
-      // Create unique key
-      const key =
-        email.threadId ||
-        `${email.subject}|${email.sender}|${email.date.getTime()}`;
-
-      if (!seen.has(key)) {
-        seen.set(key, email);
-      }
-    }
-
-    return Array.from(seen.values());
   }
 
   /**

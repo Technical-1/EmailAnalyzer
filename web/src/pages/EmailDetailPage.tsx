@@ -1,6 +1,7 @@
 import { useMemo, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
+import DOMPurify from 'dompurify';
 import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck } from 'lucide-react';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
@@ -268,50 +269,10 @@ export function EmailDetailPage() {
           )}
         </div>
 
-        {/* Body */}
+        {/* Body - HTML is sanitized with DOMPurify before rendering */}
         <div className="p-6">
           {email.htmlBody ? (
-            <iframe
-              srcDoc={`
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <meta charset="utf-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1">
-                  <style>
-                    * { box-sizing: border-box; }
-                    body { 
-                      margin: 0; 
-                      padding: 0; 
-                      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                      font-size: 14px;
-                      line-height: 1.5;
-                      color: #334155;
-                      background: transparent;
-                    }
-                    a { color: #3b82f6; }
-                    img { max-width: 100%; height: auto; }
-                    table { max-width: 100%; }
-                  </style>
-                </head>
-                <body>${email.htmlBody}</body>
-                </html>
-              `}
-              className="w-full border-0 min-h-[400px]"
-              style={{ 
-                height: 'auto',
-                minHeight: '400px',
-              }}
-              onLoad={(e) => {
-                const iframe = e.target as HTMLIFrameElement;
-                if (iframe.contentDocument) {
-                  const height = iframe.contentDocument.body.scrollHeight;
-                  iframe.style.height = `${Math.max(height + 20, 400)}px`;
-                }
-              }}
-              sandbox="allow-same-origin"
-              title="Email content"
-            />
+            <SanitizedHtmlContent html={email.htmlBody} />
           ) : (
             <pre className="whitespace-pre-wrap font-sans text-slate-700 dark:text-slate-300">
               {email.body}
@@ -320,5 +281,39 @@ export function EmailDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Renders HTML email content safely by sanitizing with DOMPurify.
+ * Strips all scripts, iframes, forms, and other dangerous elements.
+ */
+function SanitizedHtmlContent({ html }: { html: string }) {
+  const sanitizedHtml = useMemo(() => {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: [
+        'p', 'br', 'div', 'span', 'a', 'b', 'strong', 'i', 'em', 'u',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li',
+        'blockquote', 'pre', 'code', 'table', 'thead', 'tbody',
+        'tr', 'th', 'td', 'img', 'hr', 'sub', 'sup', 'small',
+      ],
+      ALLOWED_ATTR: [
+        'href', 'src', 'alt', 'title', 'class', 'style',
+        'width', 'height', 'target', 'rel',
+      ],
+      ALLOW_DATA_ATTR: false,
+      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form', 'input'],
+    });
+  }, [html]);
+
+  return (
+    <div
+      className="prose prose-slate dark:prose-invert max-w-none
+        [&_img]:max-w-full [&_img]:h-auto
+        [&_table]:max-w-full [&_a]:text-blue-500"
+      // Safe: HTML is sanitized by DOMPurify above
+      // eslint-disable-next-line react/no-danger
+      dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+    />
   );
 }

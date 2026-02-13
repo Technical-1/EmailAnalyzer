@@ -329,14 +329,26 @@ class MBOXParser {
         return null;
       }
 
+      // Sanitize field lengths to prevent memory issues with malformed emails
+      const MAX_SUBJECT_LEN = 1000;
+      const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB
+      const MAX_EMAIL_LEN = 254; // RFC 5321
+
+      const sanitizedSubject = subject.length > MAX_SUBJECT_LEN ? subject.slice(0, MAX_SUBJECT_LEN) : subject;
+      const sanitizedBody = body.trim() || (htmlBody ? this.stripHtml(htmlBody) : '');
+      const truncatedBody = sanitizedBody.length > MAX_BODY_LEN ? sanitizedBody.slice(0, MAX_BODY_LEN) : sanitizedBody;
+      const truncatedHtmlBody = htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : htmlBody;
+      const sanitizedSender = cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN);
+      const sanitizedRecipients = recipients.map(r => r.slice(0, MAX_EMAIL_LEN)).slice(0, 1000);
+
       return {
-        subject,
-        sender: cleanEmailAddress(sender),
+        subject: sanitizedSubject,
+        sender: sanitizedSender,
         senderName: senderName || undefined,
-        recipients,
+        recipients: sanitizedRecipients,
         date: date || new Date(),
-        body: body.trim() || (htmlBody ? this.stripHtml(htmlBody) : ''),
-        htmlBody,
+        body: truncatedBody,
+        htmlBody: truncatedHtmlBody,
         attachments: [],
         size: Math.min(lines.join('\n').length, 100000), // Cap size calculation
         isRead,

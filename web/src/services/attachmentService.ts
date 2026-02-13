@@ -1,4 +1,5 @@
 import type { Attachment } from '../types';
+import { logger } from '../utils/logger';
 
 /**
  * Service for handling email attachments
@@ -68,7 +69,7 @@ class AttachmentService {
    */
   downloadAttachment(attachment: Attachment): void {
     if (!attachment.data) {
-      console.error('No attachment data available');
+      logger.error('No attachment data available');
       return;
     }
 

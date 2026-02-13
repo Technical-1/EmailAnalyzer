@@ -3,7 +3,6 @@ import {
   cleanEmailAddress,
   stripHtml,
   extractDomain,
-  formatDate,
   formatFileSize,
   truncateText,
   normalizeSubject,

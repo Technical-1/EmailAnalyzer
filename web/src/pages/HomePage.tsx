@@ -39,6 +39,7 @@ import { purchaseDetector } from '../services/purchaseDetector';
 import { subscriptionDetector } from '../services/subscriptionDetector';
 import { newsletterDetector } from '../services/newsletterDetector';
 import { extractDomain } from '../utils/emailUtils';
+import { logger } from '../utils/logger';
 import type { Email, Account, Subscription, Newsletter, Contact, CalendarEvent } from '../types';
 
 export function HomePage() {
@@ -242,7 +243,7 @@ export function HomePage() {
           }
         }
       } catch (err) {
-        console.warn('Error processing email:', err);
+        logger.warn('Error processing email:', err);
       }
     }
   }, [runDetection, trackContact]);
@@ -266,7 +267,7 @@ export function HomePage() {
         });
         result.contacts++;
       } catch (err) {
-        console.warn('Error processing contact:', err);
+        logger.warn('Error processing contact:', err);
       }
     }
   }, []);
@@ -285,7 +286,7 @@ export function HomePage() {
         });
         result.calendarEvents++;
       } catch (err) {
-        console.warn('Error processing calendar event:', err);
+        logger.warn('Error processing calendar event:', err);
       }
     }
   }, []);
@@ -383,7 +384,7 @@ export function HomePage() {
 
     worker.onmessage = handleWorkerMessage;
     worker.onerror = (error) => {
-      console.error('Worker error:', error);
+      logger.error('Worker error:', error);
       setError(`Worker error: ${error.message}`);
       setIsProcessing(false);
       worker.terminate();
@@ -466,11 +467,11 @@ export function HomePage() {
         {!isProcessing ? (
           <FileDropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
         ) : (
-          progress && <ProgressBar progress={progress} />
+          progress && <div role="status" aria-live="polite"><ProgressBar progress={progress} /></div>
         )}
 
         {error && (
-          <div className="max-w-2xl mx-auto mt-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
+          <div role="alert" className="max-w-2xl mx-auto mt-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300">
             {error}
           </div>
         )}
@@ -771,7 +772,7 @@ export function HomePage() {
         </div>
         
         {isProcessing && progress && (
-          <div className="mt-4">
+          <div className="mt-4" role="status" aria-live="polite">
             <ProgressBar progress={progress} />
           </div>
         )}

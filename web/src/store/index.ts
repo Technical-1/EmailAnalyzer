@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailThread } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
+import { logger } from '../utils/logger';
 import {
   getEmails,
   getAccounts,
@@ -28,9 +29,20 @@ import {
 } from '../db/database';
 import { threadingService } from '../services/threadingService';
 
+// Build a Map of email ID -> array index for O(1) lookups
+function buildEmailIndex(emails: Email[]): Map<number, number> {
+  const map = new Map<number, number>();
+  for (let i = 0; i < emails.length; i++) {
+    const id = emails[i].id;
+    if (id !== undefined) map.set(id, i);
+  }
+  return map;
+}
+
 interface AppState {
   // Data
   emails: Email[];
+  emailIndex: Map<number, number>; // email ID -> array index for O(1) lookup
   accounts: Account[];
   purchases: Purchase[];
   contacts: Contact[];
@@ -39,11 +51,11 @@ interface AppState {
   subscriptions: Subscription[];
   newsletters: Newsletter[];
   threads: EmailThread[];
-  
+
   // Loading states
   isLoading: boolean;
   isInitialized: boolean;
-  
+
   // Stats
   totalEmailCount: number;
   
@@ -95,9 +107,13 @@ interface AppState {
   downloadExport: () => Promise<void>;
 }
 
+// Shared initialization promise to prevent concurrent init
+let initPromise: Promise<void> | null = null;
+
 export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   emails: [],
+  emailIndex: new Map(),
   accounts: [],
   purchases: [],
   contacts: [],
@@ -112,11 +128,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // Initialize all data from IndexedDB
   initialize: async () => {
-    const state = get();
-    if (state.isInitialized || state.isLoading) return;
-    
+    if (get().isInitialized) return;
+    // Share a single Promise so concurrent calls don't duplicate work
+    if (initPromise) return initPromise;
+
+    initPromise = (async () => {
     set({ isLoading: true });
-    
+
     try {
       // Initialize system folders first
       await initializeSystemFolders();
@@ -137,6 +155,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       
       set({
         emails,
+        emailIndex: buildEmailIndex(emails),
         accounts,
         purchases,
         contacts,
@@ -150,9 +169,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      console.error('Failed to initialize store:', error);
+      logger.error('Failed to initialize store:', error);
       set({ isLoading: false });
+    } finally {
+      initPromise = null;
     }
+    })();
+
+    return initPromise;
   },
   
   // Refresh individual data types
@@ -160,9 +184,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const emails = await getEmails();
       const threads = threadingService.buildThreads(emails);
-      set({ emails, threads, totalEmailCount: emails.length });
+      set({ emails, emailIndex: buildEmailIndex(emails), threads, totalEmailCount: emails.length });
     } catch (error) {
-      console.error('Failed to refresh emails:', error);
+      logger.error('Failed to refresh emails:', error);
     }
   },
   
@@ -171,7 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const accounts = await getAccounts();
       set({ accounts });
     } catch (error) {
-      console.error('Failed to refresh accounts:', error);
+      logger.error('Failed to refresh accounts:', error);
     }
   },
   
@@ -180,7 +204,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const purchases = await getPurchases();
       set({ purchases });
     } catch (error) {
-      console.error('Failed to refresh purchases:', error);
+      logger.error('Failed to refresh purchases:', error);
     }
   },
   
@@ -189,7 +213,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const contacts = await getContacts();
       set({ contacts });
     } catch (error) {
-      console.error('Failed to refresh contacts:', error);
+      logger.error('Failed to refresh contacts:', error);
     }
   },
   
@@ -198,7 +222,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const calendarEvents = await getCalendarEvents();
       set({ calendarEvents });
     } catch (error) {
-      console.error('Failed to refresh calendar events:', error);
+      logger.error('Failed to refresh calendar events:', error);
     }
   },
   
@@ -207,7 +231,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const folders = await getFolders();
       set({ folders });
     } catch (error) {
-      console.error('Failed to refresh folders:', error);
+      logger.error('Failed to refresh folders:', error);
     }
   },
   
@@ -216,7 +240,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const subscriptions = await getSubscriptions();
       set({ subscriptions });
     } catch (error) {
-      console.error('Failed to refresh subscriptions:', error);
+      logger.error('Failed to refresh subscriptions:', error);
     }
   },
   
@@ -225,7 +249,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const newsletters = await getNewsletters();
       set({ newsletters });
     } catch (error) {
-      console.error('Failed to refresh newsletters:', error);
+      logger.error('Failed to refresh newsletters:', error);
     }
   },
   
@@ -250,6 +274,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       
       set({
         emails,
+        emailIndex: buildEmailIndex(emails),
         accounts,
         purchases,
         contacts,
@@ -262,7 +287,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         isLoading: false,
       });
     } catch (error) {
-      console.error('Failed to refresh all data:', error);
+      logger.error('Failed to refresh all data:', error);
       set({ isLoading: false });
     }
   },
@@ -275,6 +300,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const folders = await getFolders();
       set({
         emails: [],
+        emailIndex: new Map(),
         accounts: [],
         purchases: [],
         contacts: [],
@@ -287,13 +313,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         isInitialized: true, // Keep initialized but empty
       });
     } catch (error) {
-      console.error('Failed to clear data:', error);
+      logger.error('Failed to clear data:', error);
     }
   },
   
-  // Get email by ID
+  // Get email by ID — O(1) via index
   getEmailById: (id: number) => {
-    return get().emails.find(e => e.id === id);
+    const idx = get().emailIndex.get(id);
+    return idx !== undefined ? get().emails[idx] : undefined;
   },
   
   // Get emails by folder
@@ -303,73 +330,67 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // Toggle email star status
   toggleEmailStar: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+    const email = get().emails[idx];
+
     const newStarred = !email.isStarred;
-    
+
     try {
       await updateEmailStar(id, newStarred);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, isStarred: newStarred } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], isStarred: newStarred };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to toggle star:', error);
+      logger.error('Failed to toggle star:', error);
     }
   },
   
   // Mark email as read
   markEmailAsRead: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email || email.isRead) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+    if (get().emails[idx].isRead) return;
+
     try {
       await updateEmailRead(id, true);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, isRead: true } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], isRead: true };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to mark as read:', error);
+      logger.error('Failed to mark as read:', error);
     }
   },
   
   // Toggle email read/unread status
   toggleEmailRead: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
-    const newRead = !email.isRead;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+
+    const newRead = !get().emails[idx].isRead;
+
     try {
       await updateEmailRead(id, newRead);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, isRead: newRead } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], isRead: newRead };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to toggle read status:', error);
+      logger.error('Failed to toggle read status:', error);
     }
   },
   
   // Delete email (move to trash)
   deleteEmail: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.TRASH);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.TRASH };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to delete email:', error);
+      logger.error('Failed to delete email:', error);
     }
   },
   
@@ -383,24 +404,22 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       });
     } catch (error) {
-      console.error('Failed to delete emails:', error);
+      logger.error('Failed to delete emails:', error);
     }
   },
   
   // Archive email
   archiveEmail: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.ARCHIVE);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.ARCHIVE };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to archive email:', error);
+      logger.error('Failed to archive email:', error);
     }
   },
   
@@ -414,41 +433,37 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       });
     } catch (error) {
-      console.error('Failed to archive emails:', error);
+      logger.error('Failed to archive emails:', error);
     }
   },
   
   // Move email to folder
   moveEmailToFolder: async (id: number, folderId: string) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+
     try {
       await updateEmailFolder(id, folderId);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, folderId } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], folderId };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to move email:', error);
+      logger.error('Failed to move email:', error);
     }
   },
   
   // Restore email from trash to inbox
   restoreEmail: async (id: number) => {
-    const email = get().emails.find(e => e.id === id);
-    if (!email) return;
-    
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.INBOX);
-      set({
-        emails: get().emails.map(e => 
-          e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
-        ),
-      });
+      const emails = [...get().emails];
+      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.INBOX };
+      set({ emails });
     } catch (error) {
-      console.error('Failed to restore email:', error);
+      logger.error('Failed to restore email:', error);
     }
   },
   
@@ -456,12 +471,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   permanentlyDeleteEmail: async (id: number) => {
     try {
       await deleteEmailDB(id);
+      const emails = get().emails.filter(e => e.id !== id);
       set({
-        emails: get().emails.filter(e => e.id !== id),
+        emails,
+        emailIndex: buildEmailIndex(emails),
         totalEmailCount: get().totalEmailCount - 1,
       });
     } catch (error) {
-      console.error('Failed to permanently delete email:', error);
+      logger.error('Failed to permanently delete email:', error);
     }
   },
   
@@ -469,17 +486,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   emptyTrash: async () => {
     const trashEmails = get().emails.filter(e => e.folderId === SYSTEM_FOLDERS.TRASH);
     const trashIds = trashEmails.map(e => e.id!).filter(id => id !== undefined);
-    
+
     if (trashIds.length === 0) return;
-    
+
     try {
       await deleteEmailsDB(trashIds);
+      const emails = get().emails.filter(e => e.folderId !== SYSTEM_FOLDERS.TRASH);
       set({
-        emails: get().emails.filter(e => e.folderId !== SYSTEM_FOLDERS.TRASH),
+        emails,
+        emailIndex: buildEmailIndex(emails),
         totalEmailCount: get().totalEmailCount - trashIds.length,
       });
     } catch (error) {
-      console.error('Failed to empty trash:', error);
+      logger.error('Failed to empty trash:', error);
     }
   },
   
@@ -501,7 +520,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         folders: [...get().folders, newFolder],
       });
     } catch (error) {
-      console.error('Failed to create folder:', error);
+      logger.error('Failed to create folder:', error);
     }
   },
   
@@ -509,18 +528,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteFolder: async (id: string) => {
     const folder = get().folders.find(f => f.id === id);
     if (!folder || folder.isSystem) return;
-    
+
     try {
       await deleteFolderDB(id);
       // Emails in this folder are automatically moved to inbox by the DB function
       set({
         folders: get().folders.filter(f => f.id !== id),
-        emails: get().emails.map(e => 
+        emails: get().emails.map(e =>
           e.folderId === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
         ),
       });
     } catch (error) {
-      console.error('Failed to delete folder:', error);
+      logger.error('Failed to delete folder:', error);
     }
   },
   
@@ -534,7 +553,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       });
     } catch (error) {
-      console.error('Failed to update contact:', error);
+      logger.error('Failed to update contact:', error);
     }
   },
   
@@ -553,7 +572,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       });
     } catch (error) {
-      console.error('Failed to toggle calendar event read status:', error);
+      logger.error('Failed to toggle calendar event read status:', error);
     }
   },
   
@@ -570,7 +589,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         ),
       });
     } catch (error) {
-      console.error('Failed to mark calendar event as read:', error);
+      logger.error('Failed to mark calendar event as read:', error);
     }
   },
   
@@ -582,7 +601,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         calendarEvents: get().calendarEvents.filter(e => e.id !== id),
       });
     } catch (error) {
-      console.error('Failed to delete calendar event:', error);
+      logger.error('Failed to delete calendar event:', error);
     }
   },
   
@@ -594,7 +613,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         calendarEvents: get().calendarEvents.filter(e => !ids.includes(e.id!)),
       });
     } catch (error) {
-      console.error('Failed to delete calendar events:', error);
+      logger.error('Failed to delete calendar events:', error);
     }
   },
   
@@ -618,7 +637,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Failed to download export:', error);
+      logger.error('Failed to download export:', error);
     }
   },
 }));

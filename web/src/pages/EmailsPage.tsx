@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star, Zap, MessageSquare, List, Send, FileText, AlertTriangle, Folder } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
+import { AdvancedSearchBuilder } from '../components/AdvancedSearchBuilder';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
 import { VirtualEmailList } from '../components/VirtualEmailList';
@@ -26,6 +27,17 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
   const [searchParams, setSearchParams] = useSearchParams();
   const { emails, threads: allThreads, emptyTrash } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Debounce search to avoid scanning email bodies on every keystroke
+  useEffect(() => {
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 250);
+    return () => clearTimeout(debounceTimer.current);
+  }, [searchQuery]);
+
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -109,9 +121,9 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         break;
     }
 
-    // Apply search
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    // Apply search (debounced to avoid scanning bodies on every keystroke)
+    if (debouncedSearch) {
+      const query = debouncedSearch.toLowerCase();
       result = result.filter(email =>
         email.subject.toLowerCase().includes(query) ||
         email.sender.toLowerCase().includes(query) ||
@@ -137,16 +149,16 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     });
 
     return result;
-  }, [emails, currentFolder, isFavorites, filter, searchQuery, sortField, sortOrder]);
+  }, [emails, currentFolder, isFavorites, filter, debouncedSearch, sortField, sortOrder]);
 
   // Show all threads when in threads mode (for instant switching)
   const threads = useMemo(() => {
     if (listMode !== 'threads') return [];
     
-    // Apply search within threads if user has entered a query
+    // Apply search within threads if user has entered a query (debounced)
     let result = allThreads;
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
+    if (debouncedSearch) {
+      const query = debouncedSearch.toLowerCase();
       result = result.filter(thread =>
         thread.subject.toLowerCase().includes(query) ||
         thread.participants.some(p => p.toLowerCase().includes(query)) ||
@@ -158,7 +170,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     }
 
     return result.sort((a, b) => b.lastMessageDate.getTime() - a.lastMessageDate.getTime());
-  }, [listMode, allThreads, searchQuery]);
+  }, [listMode, allThreads, debouncedSearch]);
 
   const folderEmailCount = isFavorites 
     ? emails.filter(e => e.isStarred).length 
@@ -214,8 +226,6 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     { value: 'subject', label: 'Subject' },
   ];
 
-  // Determine if virtual scrolling should be used
-  const shouldUseVirtualScroll = viewMode === 'virtual' || processedEmails.length > VIRTUAL_SCROLL_THRESHOLD;
   const useVirtual = viewMode === 'virtual' && processedEmails.length > 0;
 
   // Callback for email click in virtual list - preserve view mode for back navigation
@@ -241,7 +251,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
           }`} />
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{folderTitle}</h1>
-            <p className="text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-slate-500 dark:text-slate-400 mt-1" aria-live="polite">
               {processedEmails.length} emails {filter !== 'all' ? `(filtered from ${folderEmailCount})` : ''}
             </p>
           </div>
@@ -262,16 +272,19 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
       </div>
 
       {/* Search */}
-      <div className="mb-4">
-        <SearchInput
-          value={searchQuery}
-          onChange={handleSearchChange}
-          placeholder={listMode === 'threads' ? "Search conversations by subject, participants, or content..." : "Search emails by subject, sender, or content..."}
-        />
+      <div className="mb-4 flex gap-2">
+        <div className="flex-1">
+          <SearchInput
+            value={searchQuery}
+            onChange={handleSearchChange}
+            placeholder={listMode === 'threads' ? "Search conversations by subject, participants, or content..." : "Search emails by subject, sender, or content..."}
+          />
+        </div>
+        <AdvancedSearchBuilder onSearch={handleSearchChange} />
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap gap-2 mb-4" role="group" aria-label="Email type filters">
         {filters.map(f => {
           // Use starred emails for favorites, otherwise folder-based emails
           const baseEmails = isFavorites 
@@ -310,7 +323,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
 
       {/* Sort Options and View Mode */}
       <div className="flex items-center justify-between gap-2 mb-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" role="group" aria-label="Sort options">
           <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-1">
             <ArrowUpDown className="w-4 h-4" />
             Sort by:
@@ -319,6 +332,8 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
             <button
               key={option.value}
               onClick={() => handleSortChange(option.value)}
+              aria-label={`Sort by ${option.label}${sortField === option.value ? `, ${sortOrder === 'desc' ? 'descending' : 'ascending'}` : ''}`}
+              aria-pressed={sortField === option.value}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1 transition-colors ${
                 sortField === option.value
                   ? 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white'
@@ -335,7 +350,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
 
         <div className="flex items-center gap-2">
           {/* List Mode Toggle */}
-          <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+          <div className="flex border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden" role="group" aria-label="View mode">
             <button
               onClick={() => handleListModeChange('emails')}
               className={`px-3 py-1.5 text-sm font-medium flex items-center gap-1 transition-colors ${
@@ -433,7 +448,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         ) : (
           // Paginated Mode
           <>
-            <div className="space-y-3">
+            <div className="space-y-3" role="list" aria-label="Email list">
               {paginatedEmails.map(email => (
                 <EmailCard
                   key={email.id}
@@ -445,7 +460,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
 
             {/* Pagination */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+              <nav className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200 dark:border-slate-700" aria-label="Email list pagination">
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   Showing {((currentPage - 1) * EMAILS_PER_PAGE) + 1} - {Math.min(currentPage * EMAILS_PER_PAGE, processedEmails.length)} of {processedEmails.length}
                 </p>
@@ -453,6 +468,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
+                    aria-label="Previous page"
                     className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -476,6 +492,8 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
                         <button
                           key={pageNum}
                           onClick={() => setCurrentPage(pageNum)}
+                          aria-label={`Page ${pageNum}`}
+                          aria-current={currentPage === pageNum ? 'page' : undefined}
                           className={`w-10 h-10 rounded-lg text-sm font-medium transition-colors ${
                             currentPage === pageNum
                               ? 'bg-blue-500 text-white'
@@ -491,12 +509,13 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
+                    aria-label="Next page"
                     className="p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
-              </div>
+              </nav>
             )}
           </>
         )

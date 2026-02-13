@@ -55,7 +55,7 @@ export function VolumeChart({ data }: VolumeChartProps) {
             color: '#f1f5f9',
           }}
           labelStyle={{ color: '#94a3b8' }}
-          formatter={(value: number) => [value.toLocaleString(), 'Emails']}
+          formatter={(value: number | undefined) => [(value ?? 0).toLocaleString(), 'Emails']}
         />
         <Area
           type="monotone"
