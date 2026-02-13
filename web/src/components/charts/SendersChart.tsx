@@ -56,10 +56,10 @@ export function SendersChart({ data }: SendersChartProps) {
             color: '#f1f5f9',
           }}
           labelStyle={{ color: '#94a3b8' }}
-          formatter={((value: number | undefined, _name: string | undefined, props: { payload?: { name?: string } }) => [
+          formatter={(value: number | undefined) => [
             (value ?? 0).toLocaleString(),
-            props.payload?.name ?? '',
-          ]) as any}
+            'Emails',
+          ]}
         />
         <Bar
           dataKey="count"

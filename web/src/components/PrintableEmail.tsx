@@ -230,6 +230,7 @@ export const PrintableEmail: React.FC<PrintableEmailProps> = ({
 /**
  * Print an email
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function printEmail(email: Email): void {
   const printWindow = window.open('', '_blank');
   if (!printWindow) {

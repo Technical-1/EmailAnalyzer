@@ -53,8 +53,8 @@ export function BackupPage() {
       );
       backupService.downloadBackup(blob);
       setMessage('Backup downloaded successfully!');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setIsExporting(false);
     }
@@ -69,8 +69,8 @@ export function BackupPage() {
         setMessage(msg);
       });
       setMessage('Backup imported successfully! Refresh to see changes.');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setIsImporting(false);
     }
@@ -87,8 +87,8 @@ export function BackupPage() {
       setIsUnlocked(true);
       setPassphrase('');
       setMessage('Encryption set up successfully!');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     }
   };
 
@@ -102,8 +102,8 @@ export function BackupPage() {
       } else {
         setError('Incorrect passphrase');
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
     }
   };
 

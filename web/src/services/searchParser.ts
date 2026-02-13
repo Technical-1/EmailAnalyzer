@@ -104,7 +104,7 @@ export function parseSearchQuery(query: string): ParsedSearch {
         result.body = token.value.toLowerCase();
         break;
       
-      case 'date':
+      case 'date': {
         const dateValue = parseDateValue(token.value);
         if (dateValue.year && !dateValue.month) {
           result.dateYear = dateValue.year;
@@ -113,28 +113,31 @@ export function parseSearchQuery(query: string): ParsedSearch {
           result.dateTo = dateValue.date;
         }
         break;
-      
-      case 'before':
+      }
+
+      case 'before': {
         const beforeDate = parseDateValue(token.value);
         if (beforeDate.date) {
           result.dateTo = beforeDate.date;
         }
         break;
-      
-      case 'after':
+      }
+
+      case 'after': {
         const afterDate = parseDateValue(token.value);
         if (afterDate.date) {
           result.dateFrom = afterDate.date;
         }
         break;
-      
+      }
+
       case 'has':
         if (token.value.toLowerCase() === 'attachment') {
           result.hasAttachment = true;
         }
         break;
-      
-      case 'is':
+
+      case 'is': {
         const isValue = token.value.toLowerCase();
         if (isValue === 'unread') {
           result.isUnread = true;
@@ -144,8 +147,9 @@ export function parseSearchQuery(query: string): ParsedSearch {
           result.isRead = true;
         }
         break;
-      
-      case 'type':
+      }
+
+      case 'type': {
         const typeValue = token.value.toLowerCase();
         if (typeValue === 'purchase') {
           result.type = 'purchase';
@@ -155,6 +159,7 @@ export function parseSearchQuery(query: string): ParsedSearch {
           result.type = 'regular';
         }
         break;
+      }
       
       case 'in':
         result.folder = token.value.toLowerCase();

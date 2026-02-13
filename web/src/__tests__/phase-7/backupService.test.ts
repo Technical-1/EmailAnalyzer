@@ -45,7 +45,7 @@ describe('BackupService', () => {
         isStarred: false,
         folderId: 'inbox',
         emailType: 'regular',
-      } as any);
+      } as Parameters<typeof db.emails.add>[0]);
 
       const blob = await backupService.exportBackup({
         includeEmails: true,
@@ -94,7 +94,7 @@ describe('BackupService', () => {
           folderId: 'inbox',
           emailType: 'regular',
         },
-      ] as any[]);
+      ] as Parameters<typeof db.emails.bulkAdd>[0]);
 
       const blob = await backupService.exportBackup({
         includeEmails: true,
@@ -177,7 +177,7 @@ describe('BackupService', () => {
         isStarred: false,
         folderId: 'inbox',
         emailType: 'regular',
-      } as any);
+      } as Parameters<typeof db.emails.add>[0]);
 
       // Export
       const blob = await backupService.exportBackup({
@@ -244,14 +244,14 @@ describe('BackupService', () => {
         isStarred: false,
         folderId: 'inbox',
         emailType: 'regular',
-      } as any);
+      } as Parameters<typeof db.emails.add>[0]);
 
       await db.contacts.add({
         name: 'Test',
         email: 'test@test.com',
         emailCount: 1,
         lastEmailDate: Date.now(),
-      } as any);
+      } as Parameters<typeof db.contacts.add>[0]);
 
       // Verify data exists
       expect(await db.emails.count()).toBe(1);

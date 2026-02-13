@@ -338,9 +338,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailStar(id, newStarred);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], isStarred: newStarred };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, isStarred: newStarred } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to toggle star:', error);
     }
@@ -354,9 +355,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailRead(id, true);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], isRead: true };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, isRead: true } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to mark as read:', error);
     }
@@ -371,9 +373,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailRead(id, newRead);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], isRead: newRead };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, isRead: newRead } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to toggle read status:', error);
     }
@@ -386,9 +389,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.TRASH);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.TRASH };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to delete email:', error);
     }
@@ -398,11 +402,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteEmails: async (ids: number[]) => {
     try {
       await Promise.all(ids.map(id => updateEmailFolder(id, SYSTEM_FOLDERS.TRASH)));
-      set({
-        emails: get().emails.map(e => 
-          ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
-        ),
-      });
+      const emails = get().emails.map(e =>
+        ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to delete emails:', error);
     }
@@ -415,9 +418,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.ARCHIVE);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.ARCHIVE };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to archive email:', error);
     }
@@ -427,11 +431,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveEmails: async (ids: number[]) => {
     try {
       await Promise.all(ids.map(id => updateEmailFolder(id, SYSTEM_FOLDERS.ARCHIVE)));
-      set({
-        emails: get().emails.map(e => 
-          ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
-        ),
-      });
+      const emails = get().emails.map(e =>
+        ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to archive emails:', error);
     }
@@ -444,9 +447,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailFolder(id, folderId);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], folderId };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, folderId } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to move email:', error);
     }
@@ -459,9 +463,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.INBOX);
-      const emails = [...get().emails];
-      emails[idx] = { ...emails[idx], folderId: SYSTEM_FOLDERS.INBOX };
-      set({ emails });
+      const emails = get().emails.map(e =>
+        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
+      );
+      set({ emails, emailIndex: buildEmailIndex(emails) });
     } catch (error) {
       logger.error('Failed to restore email:', error);
     }
@@ -532,11 +537,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await deleteFolderDB(id);
       // Emails in this folder are automatically moved to inbox by the DB function
+      const emails = get().emails.map(e =>
+        e.folderId === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
+      );
       set({
         folders: get().folders.filter(f => f.id !== id),
-        emails: get().emails.map(e =>
-          e.folderId === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
-        ),
+        emails,
+        emailIndex: buildEmailIndex(emails),
       });
     } catch (error) {
       logger.error('Failed to delete folder:', error);

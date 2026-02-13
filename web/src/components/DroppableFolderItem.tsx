@@ -13,14 +13,13 @@ export function DroppableFolderItem({
   folder,
   children,
   onDrop,
-  isActive: _isActive = false,
 }: DroppableFolderItemProps) {
   const [{ isOver, canDrop }, drop] = useDrop(() => ({
     accept: DRAGGABLE_EMAIL_TYPE,
     drop: (item: DragItem) => {
       onDrop(item.emailIds, folder.id);
     },
-    canDrop: (_item: DragItem) => {
+    canDrop: () => {
       // Can't drop on the same folder
       return true;
     },

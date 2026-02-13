@@ -312,7 +312,6 @@ function SanitizedHtmlContent({ html }: { html: string }) {
         [&_img]:max-w-full [&_img]:h-auto
         [&_table]:max-w-full [&_a]:text-blue-500"
       // Safe: HTML is sanitized by DOMPurify above
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
     />
   );

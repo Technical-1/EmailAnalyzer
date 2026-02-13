@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { X, Mail, Phone, FileText, Tag } from 'lucide-react';
 import type { Contact } from '../types';
 
@@ -10,19 +10,12 @@ interface ContactModalProps {
 }
 
 export function ContactModal({ contact, isOpen, onClose, onSave }: ContactModalProps) {
-  const [phone, setPhone] = useState('');
-  const [notes, setNotes] = useState('');
+  // Derive initial state from props using key trick:
+  // Parent should pass key={contact.id + String(isOpen)} to reset state when contact changes
+  const [phone, setPhone] = useState(contact?.phone || '');
+  const [notes, setNotes] = useState(contact?.notes || '');
   const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-
-  useEffect(() => {
-    if (contact) {
-      setPhone(contact.phone || '');
-      setNotes(contact.notes || '');
-      setTags(contact.tags || []);
-    }
-    setTagInput('');
-  }, [contact, isOpen]);
+  const [tags, setTags] = useState<string[]>(contact?.tags || []);
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim();

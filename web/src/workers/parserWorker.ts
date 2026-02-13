@@ -876,7 +876,7 @@ async function parseOLMFile(file: File): Promise<void> {
   if (contactFiles.length > 0 && !ctx.isCancelled) {
     reportProgress('parsing_contacts', 0, 'Parsing contacts...');
     
-    let allContacts: Omit<Contact, 'id'>[] = [];
+    const allContacts: Omit<Contact, 'id'>[] = [];
     
     for (let i = 0; i < contactFiles.length && !ctx.isCancelled; i++) {
       try {
@@ -904,7 +904,7 @@ async function parseOLMFile(file: File): Promise<void> {
   if (calendarFiles.length > 0 && !ctx.isCancelled) {
     reportProgress('parsing_calendar', 0, 'Parsing calendar files...');
     
-    let allEvents: Omit<CalendarEvent, 'id'>[] = [];
+    const allEvents: Omit<CalendarEvent, 'id'>[] = [];
     
     for (let i = 0; i < calendarFiles.length && !ctx.isCancelled; i++) {
       try {
@@ -972,8 +972,8 @@ async function parseGmailTakeoutFile(file: File): Promise<void> {
         `Processing ${folderName} (${fileIndex + 1}/${mboxFiles.length})...`
       );
 
-      // Get content and parse
-      const content = await zipEntry.async('string');
+      // Get content and parse (let so we can null it for GC)
+      let content: string | null = await zipEntry.async('string');
       const emails = parseEmailsFromText(content);
 
       // Deduplicate and batch
@@ -1006,7 +1006,6 @@ async function parseGmailTakeoutFile(file: File): Promise<void> {
       }
 
       // Help garbage collection
-      // @ts-expect-error - intentional to help GC
       content = null;
       
     } catch (error) {

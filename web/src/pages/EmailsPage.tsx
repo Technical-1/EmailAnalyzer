@@ -83,8 +83,8 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
   };
   const folderTitle = getFolderTitle();
 
-  // Get folder icon
-  const getFolderIcon = () => {
+  // Get folder icon - memoized to avoid creating components during render
+  const FolderIcon = useMemo(() => {
     if (isFavorites) return Star;
     if (currentFolder === 'sent') return Send;
     if (currentFolder === 'drafts') return FileText;
@@ -93,8 +93,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     if (currentFolder === 'trash') return Trash2;
     if (currentFolder === 'inbox' || !folderParam) return Inbox;
     return Folder; // Custom folders
-  };
-  const FolderIcon = getFolderIcon();
+  }, [isFavorites, currentFolder, folderParam]);
 
   // Filter, search, and sort emails
   const processedEmails = useMemo(() => {

@@ -19,6 +19,7 @@ interface UndoToastState {
 }
 
 // Store for managing undo toasts
+// eslint-disable-next-line react-refresh/only-export-components
 export const useUndoToastStore = create<UndoToastState>((set) => ({
   toasts: [],
   
@@ -42,6 +43,7 @@ export const useUndoToastStore = create<UndoToastState>((set) => ({
 }));
 
 // Hook for showing undo toasts
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUndoToast() {
   const { addToast, removeToast } = useUndoToastStore();
 

@@ -296,7 +296,7 @@ class BackupService {
         ...e,
         date: new Date(e.date).getTime(),
       }));
-      await db.emails.bulkPut(dbEmails as any);
+      await db.emails.bulkPut(dbEmails as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import accounts
@@ -307,7 +307,7 @@ class BackupService {
         ...a,
         signupDate: new Date(a.signupDate).getTime(),
       }));
-      await db.accounts.bulkPut(dbAccounts as any);
+      await db.accounts.bulkPut(dbAccounts as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import purchases
@@ -318,7 +318,7 @@ class BackupService {
         ...p,
         purchaseDate: new Date(p.purchaseDate).getTime(),
       }));
-      await db.purchases.bulkPut(dbPurchases as any);
+      await db.purchases.bulkPut(dbPurchases as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import contacts
@@ -329,7 +329,7 @@ class BackupService {
         ...c,
         lastEmailDate: new Date(c.lastEmailDate).getTime(),
       }));
-      await db.contacts.bulkPut(dbContacts as any);
+      await db.contacts.bulkPut(dbContacts as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import calendar events
@@ -341,7 +341,7 @@ class BackupService {
         startDate: new Date(e.startDate).getTime(),
         endDate: new Date(e.endDate).getTime(),
       }));
-      await db.calendarEvents.bulkPut(dbEvents as any);
+      await db.calendarEvents.bulkPut(dbEvents as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import folders
@@ -352,7 +352,7 @@ class BackupService {
         ...f,
         createdAt: new Date(f.createdAt).getTime(),
       }));
-      await db.folders.bulkPut(dbFolders as any);
+      await db.folders.bulkPut(dbFolders as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import subscriptions
@@ -365,7 +365,7 @@ class BackupService {
         nextRenewalDate: s.nextRenewalDate ? new Date(s.nextRenewalDate).getTime() : undefined,
         emailIds: JSON.stringify(s.emailIds || []),
       }));
-      await db.subscriptions.bulkPut(dbSubscriptions as any);
+      await db.subscriptions.bulkPut(dbSubscriptions as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     // Import newsletters
@@ -376,7 +376,7 @@ class BackupService {
         ...n,
         lastEmailDate: new Date(n.lastEmailDate).getTime(),
       }));
-      await db.newsletters.bulkPut(dbNewsletters as any);
+      await db.newsletters.bulkPut(dbNewsletters as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
     }
 
     onProgress?.(100, 'Import complete!');

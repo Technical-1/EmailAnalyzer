@@ -62,6 +62,7 @@ export function SearchHighlight({ text, searchTerms, className = '' }: SearchHig
 /**
  * Simple text highlighting without React component
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function highlightText(text: string, searchTerms: string[]): string {
   if (!text || searchTerms.length === 0) {
     return text;

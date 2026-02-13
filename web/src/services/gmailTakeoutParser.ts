@@ -254,7 +254,7 @@ class GmailTakeoutParser {
         message: `Found ${mboxCount} mail folders ready to import`,
         folderCount: mboxCount,
       };
-    } catch (error) {
+    } catch {
       return {
         valid: false,
         message: 'Could not read the archive. Make sure it is a valid ZIP file.',

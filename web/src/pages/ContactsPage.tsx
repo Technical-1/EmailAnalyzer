@@ -270,6 +270,7 @@ export function ContactsPage() {
       {/* Contact Modal */}
       {editingContact && (
         <ContactModal
+          key={`${editingContact.id}-${isModalOpen}`}
           contact={editingContact}
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}

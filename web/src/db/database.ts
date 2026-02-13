@@ -185,7 +185,9 @@ export const getEmailCountByFolder = async (folderId: string): Promise<number> =
 export const getEmailHeaders = async (): Promise<Omit<Email, 'body' | 'htmlBody'>[]> => {
   const dbEmails = await db.emails.orderBy('date').reverse().toArray();
   return dbEmails.map(dbEmail => {
-    const { body, htmlBody, ...rest } = dbEmailToEmail(dbEmail);
+    const email = dbEmailToEmail(dbEmail);
+    const { body, htmlBody, ...rest } = email;
+    void body; void htmlBody;
     return rest as Omit<Email, 'body' | 'htmlBody'>;
   });
 };

@@ -1,5 +1,5 @@
 import { useEffect, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 interface KeyboardShortcutsOptions {
   onToggleSidebar?: () => void;
@@ -18,7 +18,6 @@ export const KEYBOARD_SHORTCUTS = [
 
 export function useKeyboardShortcuts({ onCloseSidebar }: KeyboardShortcutsOptions = {}) {
   const navigate = useNavigate();
-  const location = useLocation();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't handle shortcuts when typing in inputs
@@ -70,7 +69,7 @@ export function useKeyboardShortcuts({ onCloseSidebar }: KeyboardShortcutsOption
       setTimeout(() => document.removeEventListener('keydown', handleGoTo), 1000);
       return;
     }
-  }, [navigate, location, onCloseSidebar]);
+  }, [navigate, onCloseSidebar]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
