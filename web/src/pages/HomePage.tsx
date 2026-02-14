@@ -1,9 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { 
-  Mail, Users, Calendar, ShoppingBag, UserCheck, RefreshCw, Newspaper, 
+import {
+  Mail, Users, Calendar, ShoppingBag, UserCheck, RefreshCw, Newspaper,
   Paperclip, Building2, BarChart3, Upload, ArrowRight,
-  CheckCircle, Inbox, Star, Archive
+  CheckCircle, Inbox, Star, Archive, XCircle
 } from 'lucide-react';
 import { FileDropzone } from '../components/FileDropzone';
 import { ProgressBar } from '../components/ProgressBar';
@@ -401,6 +401,16 @@ export function HomePage() {
     worker.postMessage(message);
   }, [handleWorkerMessage]);
 
+  const handleCancelImport = useCallback(() => {
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+    }
+    setIsProcessing(false);
+    setProgress(null);
+    setError(null);
+  }, []);
+
   const handleFileSelect = useCallback(async (file: File) => {
     setIsProcessing(true);
     setError(null);
@@ -467,7 +477,20 @@ export function HomePage() {
         {!isProcessing ? (
           <FileDropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
         ) : (
-          progress && <div role="status" aria-live="polite"><ProgressBar progress={progress} /></div>
+          progress && (
+            <div role="status" aria-live="polite">
+              <ProgressBar progress={progress} />
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={handleCancelImport}
+                  className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Cancel Import
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {error && (
@@ -774,6 +797,15 @@ export function HomePage() {
         {isProcessing && progress && (
           <div className="mt-4" role="status" aria-live="polite">
             <ProgressBar progress={progress} />
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={handleCancelImport}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>

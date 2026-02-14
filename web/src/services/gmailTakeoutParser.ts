@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import type { Email } from '../types';
 import { mboxParser, type EmailBatchCallback } from './mboxParser';
+import { logger } from '../utils/logger';
 
 /**
  * Parser for Google Takeout email archives
@@ -150,7 +151,7 @@ class GmailTakeoutParser {
         await new Promise(resolve => setTimeout(resolve, 10));
 
       } catch (error) {
-        console.warn(`Failed to parse ${mboxPath}:`, error);
+        logger.warn(`Failed to parse ${mboxPath}:`, error);
       }
     }
 

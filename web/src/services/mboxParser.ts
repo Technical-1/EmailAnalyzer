@@ -1,5 +1,6 @@
 import type { Email } from '../types';
 import { cleanEmailAddress, normalizeSubject } from '../utils/emailUtils';
+import { logger } from '../utils/logger';
 
 /**
  * Callback for streaming email processing
@@ -40,7 +41,7 @@ class MBOXParser {
       try {
         chunkText = await chunk.text();
       } catch (e) {
-        console.error('Error reading chunk:', e);
+        logger.error('Error reading chunk:', e);
         break;
       }
       

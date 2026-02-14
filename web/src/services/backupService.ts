@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { db } from '../db/database';
+import type { DBEmail, DBAccount, DBPurchase, DBContact, DBCalendarEvent, DBFolder, DBSubscription, DBNewsletter } from '../db/database';
 import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
 import { encryptionService } from './encryptionService';
 
@@ -292,91 +293,91 @@ class BackupService {
     onProgress?.(20, 'Importing emails...');
     const emails = await readAndParse<Email>('emails');
     if (emails && emails.length > 0) {
-      const dbEmails = emails.map((e) => ({
+      const dbEmails: DBEmail[] = emails.map((e) => ({
         ...e,
         date: new Date(e.date).getTime(),
-      }));
-      await db.emails.bulkPut(dbEmails as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBEmail[];
+      await db.emails.bulkPut(dbEmails);
     }
 
     // Import accounts
     onProgress?.(35, 'Importing accounts...');
     const accounts = await readAndParse<Account>('accounts');
     if (accounts && accounts.length > 0) {
-      const dbAccounts = accounts.map((a) => ({
+      const dbAccounts: DBAccount[] = accounts.map((a) => ({
         ...a,
         signupDate: new Date(a.signupDate).getTime(),
-      }));
-      await db.accounts.bulkPut(dbAccounts as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBAccount[];
+      await db.accounts.bulkPut(dbAccounts);
     }
 
     // Import purchases
     onProgress?.(50, 'Importing purchases...');
     const purchases = await readAndParse<Purchase>('purchases');
     if (purchases && purchases.length > 0) {
-      const dbPurchases = purchases.map((p) => ({
+      const dbPurchases: DBPurchase[] = purchases.map((p) => ({
         ...p,
         purchaseDate: new Date(p.purchaseDate).getTime(),
-      }));
-      await db.purchases.bulkPut(dbPurchases as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBPurchase[];
+      await db.purchases.bulkPut(dbPurchases);
     }
 
     // Import contacts
     onProgress?.(65, 'Importing contacts...');
     const contacts = await readAndParse<Contact>('contacts');
     if (contacts && contacts.length > 0) {
-      const dbContacts = contacts.map((c) => ({
+      const dbContacts: DBContact[] = contacts.map((c) => ({
         ...c,
         lastEmailDate: new Date(c.lastEmailDate).getTime(),
-      }));
-      await db.contacts.bulkPut(dbContacts as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBContact[];
+      await db.contacts.bulkPut(dbContacts);
     }
 
     // Import calendar events
     onProgress?.(80, 'Importing calendar events...');
     const calendarEvents = await readAndParse<CalendarEvent>('calendar-events');
     if (calendarEvents && calendarEvents.length > 0) {
-      const dbEvents = calendarEvents.map((e) => ({
+      const dbEvents: DBCalendarEvent[] = calendarEvents.map((e) => ({
         ...e,
         startDate: new Date(e.startDate).getTime(),
         endDate: new Date(e.endDate).getTime(),
-      }));
-      await db.calendarEvents.bulkPut(dbEvents as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBCalendarEvent[];
+      await db.calendarEvents.bulkPut(dbEvents);
     }
 
     // Import folders
     onProgress?.(80, 'Importing folders...');
     const folders = await readAndParse<Folder>('folders');
     if (folders && folders.length > 0) {
-      const dbFolders = folders.map((f) => ({
+      const dbFolders: DBFolder[] = folders.map((f) => ({
         ...f,
         createdAt: new Date(f.createdAt).getTime(),
-      }));
-      await db.folders.bulkPut(dbFolders as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBFolder[];
+      await db.folders.bulkPut(dbFolders);
     }
 
     // Import subscriptions
     onProgress?.(88, 'Importing subscriptions...');
     const subscriptions = await readAndParse<Subscription>('subscriptions');
     if (subscriptions && subscriptions.length > 0) {
-      const dbSubscriptions = subscriptions.map((s) => ({
+      const dbSubscriptions: DBSubscription[] = subscriptions.map((s) => ({
         ...s,
         lastRenewalDate: new Date(s.lastRenewalDate).getTime(),
         nextRenewalDate: s.nextRenewalDate ? new Date(s.nextRenewalDate).getTime() : undefined,
         emailIds: JSON.stringify(s.emailIds || []),
-      }));
-      await db.subscriptions.bulkPut(dbSubscriptions as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as unknown as DBSubscription[];
+      await db.subscriptions.bulkPut(dbSubscriptions);
     }
 
     // Import newsletters
     onProgress?.(95, 'Importing newsletters...');
     const newsletters = await readAndParse<Newsletter>('newsletters');
     if (newsletters && newsletters.length > 0) {
-      const dbNewsletters = newsletters.map((n) => ({
+      const dbNewsletters: DBNewsletter[] = newsletters.map((n) => ({
         ...n,
         lastEmailDate: new Date(n.lastEmailDate).getTime(),
-      }));
-      await db.newsletters.bulkPut(dbNewsletters as any[]); // eslint-disable-line @typescript-eslint/no-explicit-any
+      })) as DBNewsletter[];
+      await db.newsletters.bulkPut(dbNewsletters);
     }
 
     onProgress?.(100, 'Import complete!');

@@ -4,45 +4,45 @@ import { SYSTEM_FOLDERS } from '../types';
 
 const SYSTEM_FOLDER_IDS: Set<string> = new Set(Object.values(SYSTEM_FOLDERS));
 
-// Database email type (with id required)
-interface DBEmail extends Omit<Email, 'date'> {
+// Database types (dates stored as timestamps)
+export interface DBEmail extends Omit<Email, 'date'> {
   id: number;
-  date: number; // Store as timestamp
+  date: number;
 }
 
-interface DBAccount extends Omit<Account, 'signupDate' | 'lastActivityDate'> {
+export interface DBAccount extends Omit<Account, 'signupDate' | 'lastActivityDate'> {
   id: number;
   signupDate: number;
   lastActivityDate?: number;
 }
 
-interface DBPurchase extends Omit<Purchase, 'purchaseDate'> {
+export interface DBPurchase extends Omit<Purchase, 'purchaseDate'> {
   id: number;
   purchaseDate: number;
 }
 
-interface DBContact extends Omit<Contact, 'lastEmailDate'> {
+export interface DBContact extends Omit<Contact, 'lastEmailDate'> {
   id: number;
   lastEmailDate: number;
 }
 
-interface DBCalendarEvent extends Omit<CalendarEvent, 'startDate' | 'endDate'> {
+export interface DBCalendarEvent extends Omit<CalendarEvent, 'startDate' | 'endDate'> {
   id: number;
   startDate: number;
   endDate: number;
 }
 
-interface DBFolder extends Omit<Folder, 'createdAt'> {
+export interface DBFolder extends Omit<Folder, 'createdAt'> {
   createdAt: number;
 }
 
-interface DBSubscription extends Omit<Subscription, 'lastRenewalDate' | 'nextRenewalDate'> {
+export interface DBSubscription extends Omit<Subscription, 'lastRenewalDate' | 'nextRenewalDate'> {
   id: number;
   lastRenewalDate: number;
   nextRenewalDate?: number;
 }
 
-interface DBNewsletter extends Omit<Newsletter, 'lastEmailDate'> {
+export interface DBNewsletter extends Omit<Newsletter, 'lastEmailDate'> {
   id: number;
   lastEmailDate: number;
 }

@@ -31,6 +31,24 @@ function RouteLoadingFallback() {
   );
 }
 
+function NotFoundPage() {
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <h1 className="text-6xl font-bold text-slate-300 dark:text-slate-600 mb-4">404</h1>
+      <h2 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">Page Not Found</h2>
+      <p className="text-slate-500 dark:text-slate-400 mb-6 max-w-md">
+        The page you're looking for doesn't exist or has been moved.
+      </p>
+      <a
+        href="/"
+        className="px-5 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+      >
+        Go Home
+      </a>
+    </div>
+  );
+}
+
 function AppContent() {
   const { initialize, isInitialized, isLoading } = useAppStore();
 
@@ -69,6 +87,7 @@ function AppContent() {
           <Route path="backup" element={<BackupPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="privacy" element={<PrivacyPolicyPage />} />
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>
     </Suspense>
