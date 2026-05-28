@@ -16,6 +16,11 @@ import {
   decodeQuotedPrintable,
   decodeRfc2047,
   isMboxFromLine,
+  MAX_SUBJECT_LEN,
+  MAX_BODY_LEN,
+  MAX_EMAIL_LEN,
+  MAX_COMPRESSED_BYTES,
+  MAX_DECOMPRESSED_BYTES,
 } from '../services/mimeUtils';
 
 // ============================================================================
@@ -436,13 +441,16 @@ function parseEmailFromLines(lines: string[]): Omit<Email, 'id'> | null {
     }
 
     return {
-      subject,
-      sender: cleanEmailAddress(sender),
+      subject: subject.length > MAX_SUBJECT_LEN ? subject.slice(0, MAX_SUBJECT_LEN) : subject,
+      sender: cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN),
       senderName: senderName || undefined,
-      recipients,
+      recipients: recipients.map(r => r.slice(0, MAX_EMAIL_LEN)).slice(0, 1000),
       date: date || new Date(),
-      body: body.trim() || (htmlBody ? stripHtml(htmlBody) : ''),
-      htmlBody,
+      body: (() => {
+        const b = body.trim() || (htmlBody ? stripHtml(htmlBody) : '');
+        return b.length > MAX_BODY_LEN ? b.slice(0, MAX_BODY_LEN) : b;
+      })(),
+      htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : htmlBody,
       attachments: [],
       size: Math.min(lines.join('\n').length, 100000),
       isRead,
@@ -642,13 +650,13 @@ function parseOLMEmailXML(xmlContent: string): Omit<Email, 'id'> | null {
     }
 
     return {
-      subject: subject || '(No Subject)',
-      sender: cleanEmailAddress(sender),
+      subject: (subject || '(No Subject)').slice(0, MAX_SUBJECT_LEN),
+      sender: cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN),
       senderName: senderName || undefined,
-      recipients,
+      recipients: recipients.map(r => r.slice(0, MAX_EMAIL_LEN)).slice(0, 1000),
       date: isNaN(date.getTime()) ? new Date() : date,
-      body: body || preview || '',
-      htmlBody: htmlBody || undefined,
+      body: (() => { const b = body || preview || ''; return b.length > MAX_BODY_LEN ? b.slice(0, MAX_BODY_LEN) : b; })(),
+      htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : (htmlBody || undefined),
       attachments: [],
       size: xmlContent.length,
       isRead,
@@ -773,9 +781,26 @@ function parseOLMCalendarXML(xmlContent: string): Omit<CalendarEvent, 'id'>[] {
 
 async function parseOLMFile(file: File): Promise<void> {
   reportProgress('extracting', 0, 'Extracting OLM archive...');
-  
+
+  if (file.size > MAX_COMPRESSED_BYTES) {
+    throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
+  }
+
   const zip = await JSZip.loadAsync(file);
-  
+
+  let totalDecompressedSize = 0;
+  for (const entry of Object.values(zip.files)) {
+    if (!entry.dir) {
+      const entryData = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+      if (entryData && typeof entryData.uncompressedSize === 'number') {
+        totalDecompressedSize += entryData.uncompressedSize;
+      }
+    }
+  }
+  if (totalDecompressedSize > MAX_DECOMPRESSED_BYTES) {
+    throw new Error('Archive decompressed size exceeds 2GB limit. This may be a malicious file.');
+  }
+
   reportProgress('extracting', 100, 'Archive extracted successfully');
 
   const files = Object.keys(zip.files);
@@ -911,8 +936,26 @@ async function parseOLMFile(file: File): Promise<void> {
 
 async function parseGmailTakeoutFile(file: File): Promise<void> {
   reportProgress('extracting', 0, 'Opening Gmail Takeout archive...');
-  
+
+  if (file.size > MAX_COMPRESSED_BYTES) {
+    throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
+  }
+
   const zip = await JSZip.loadAsync(file);
+
+  let totalDecompressedSize = 0;
+  for (const entry of Object.values(zip.files)) {
+    if (!entry.dir) {
+      const entryData = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
+      if (entryData && typeof entryData.uncompressedSize === 'number') {
+        totalDecompressedSize += entryData.uncompressedSize;
+      }
+    }
+  }
+  if (totalDecompressedSize > MAX_DECOMPRESSED_BYTES) {
+    throw new Error('Archive decompressed size exceeds 2GB limit. This may be a malicious file.');
+  }
+
   
   const mboxFiles: string[] = [];
   zip.forEach((path, zipEntry) => {
