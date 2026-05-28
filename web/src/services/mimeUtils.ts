@@ -16,15 +16,27 @@ export function decodeQuotedPrintable(input: string, charset = 'utf-8'): string 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (ch === '=' && i + 2 < text.length) {
-      const hex = text.substr(i + 1, 2);
+      const hex = text.slice(i + 1, i + 3);  // Issue #4: use slice, not deprecated substr
       if (/^[0-9A-Fa-f]{2}$/.test(hex)) {
         bytes.push(parseInt(hex, 16));
         i += 2;
         continue;
       }
     }
-    // Literal character: push its code units as UTF-8 bytes.
+    // Literal character: push its UTF-8 bytes.
+    // Issue #3: handle surrogate pairs (astral code points like emoji)
+    // by consuming both code units together via TextEncoder.
     const code = ch.charCodeAt(0);
+    if (code >= 0xD800 && code <= 0xDBFF && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xDC00 && next <= 0xDFFF) {
+        // High surrogate followed by low surrogate: encode the pair together.
+        const enc = new TextEncoder().encode(text[i] + text[i + 1]);
+        for (const b of enc) bytes.push(b);
+        i += 1; // skip the low surrogate on the next iteration
+        continue;
+      }
+    }
     if (code < 0x80) {
       bytes.push(code);
     } else {
@@ -53,7 +65,11 @@ function normalizeCharset(charset: string): string {
  * (charset-aware, underscores become spaces). Falls back to raw text.
  */
 export function decodeRfc2047(value: string): string {
-  return value.replace(
+  // Issue #2: RFC 2047 §6.2 — linear whitespace between two adjacent
+  // encoded-words must be removed before decoding. Whitespace between
+  // an encoded-word and ordinary text must be preserved.
+  const collapsed = value.replace(/\?=\s+=\?/g, '?==?');
+  return collapsed.replace(
     /=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi,
     (_match, charset: string, encoding: string, text: string) => {
       try {
@@ -95,11 +111,11 @@ export function makeSnippet(htmlOrText: string, maxLen = 200): string {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')  // Issue #1: must be last to avoid double-decoding &amp;lt; -> <
     .replace(/\s+/g, ' ')
     .trim();
   return text.length > maxLen ? text.slice(0, maxLen) + '…' : text;

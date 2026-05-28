@@ -123,4 +123,27 @@ describe('makeSnippet', () => {
   it('returns empty string for empty input', () => {
     expect(makeSnippet('')).toBe('');
   });
+
+  it('does not double-decode nested HTML entities (&amp;lt; stays &lt;)', () => {
+    // &amp;lt; should become the literal text "&lt;", NOT "<"
+    expect(makeSnippet('a &amp;lt; b')).toBe('a &lt; b');
+  });
+});
+
+describe('decodeRfc2047 — inter-encoded-word whitespace (RFC 2047 §6.2)', () => {
+  it('removes whitespace between two adjacent encoded-words', () => {
+    // "caf" + "é" split across two encoded-words with a space between them
+    expect(decodeRfc2047('=?UTF-8?B?Y2Fm?= =?UTF-8?B?w6k=?=')).toBe('café');
+  });
+
+  it('preserves whitespace between an encoded-word and plain text', () => {
+    // Space before "there" must be kept
+    expect(decodeRfc2047('=?UTF-8?B?SGk=?= there')).toBe('Hi there');
+  });
+});
+
+describe('decodeQuotedPrintable — surrogate pair handling', () => {
+  it('encodes astral (emoji) characters correctly without corruption', () => {
+    expect(decodeQuotedPrintable('hi😀')).toBe('hi😀');
+  });
 });
