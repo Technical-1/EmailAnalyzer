@@ -15,6 +15,7 @@ export interface Email {
   isStarred: boolean;
   folderId: string;
   threadId?: string;
+  snippet?: string;
   originalOlmId?: string;
   emailType: 'account_signup' | 'purchase' | 'regular';
   detectedAccount?: string;
