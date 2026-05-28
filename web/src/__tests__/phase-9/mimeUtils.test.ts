@@ -8,6 +8,7 @@ import {
 } from '../../services/mimeUtils';
 import { decodeQuotedPrintable } from '../../services/mimeUtils';
 import { decodeRfc2047 } from '../../services/mimeUtils';
+import { isMboxFromLine } from '../../services/mimeUtils';
 
 describe('mimeUtils size constants', () => {
   it('matches the values ported from olmParser', () => {
@@ -63,5 +64,29 @@ describe('decodeRfc2047', () => {
 
   it('falls back to the raw text on undecodable input', () => {
     expect(decodeRfc2047('=?UTF-8?B?@@@bad@@@?=')).toBe('@@@bad@@@');
+  });
+});
+
+describe('isMboxFromLine', () => {
+  it('matches a real mbox envelope From line', () => {
+    expect(isMboxFromLine('From sender@example.com Mon Jan 01 00:00:00 2024')).toBe(true);
+  });
+
+  it('matches all weekday abbreviations', () => {
+    for (const day of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+      expect(isMboxFromLine(`From a@b.com ${day} Feb 02 12:00:00 2024`)).toBe(true);
+    }
+  });
+
+  it('does NOT match a body sentence beginning with "From "', () => {
+    expect(isMboxFromLine('From Wednesday onward we will be closed')).toBe(false);
+  });
+
+  it('does NOT match a quoted >From body line', () => {
+    expect(isMboxFromLine('>From sender@example.com Mon Jan 01 00:00:00 2024')).toBe(false);
+  });
+
+  it('does NOT match a line missing the weekday/month shape', () => {
+    expect(isMboxFromLine('From sender@example.com is my address')).toBe(false);
   });
 });

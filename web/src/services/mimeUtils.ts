@@ -72,6 +72,18 @@ export function decodeRfc2047(value: string): string {
   );
 }
 
+/**
+ * Strict mbox "From " envelope-line matcher. Requires the canonical
+ *   From <addr> <Day> <Mon> ...
+ * shape so prose like "From Wednesday onward" does not split messages.
+ * Quoted ">From " body lines are NOT envelope lines.
+ */
+const MBOX_FROM_RE = /^From \S+ (Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} /;
+export function isMboxFromLine(line: string): boolean {
+  if (line.startsWith('>')) return false;
+  return MBOX_FROM_RE.test(line);
+}
+
 // Field/size limits (exact values ported from olmParser.ts)
 export const MAX_SUBJECT_LEN = 1000;
 export const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB
