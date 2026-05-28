@@ -16,6 +16,7 @@ import {
   decodeQuotedPrintable,
   decodeRfc2047,
   isMboxFromLine,
+  makeSnippet,
   MAX_SUBJECT_LEN,
   MAX_BODY_LEN,
   MAX_EMAIL_LEN,
@@ -451,6 +452,7 @@ function parseEmailFromLines(lines: string[]): Omit<Email, 'id'> | null {
         return b.length > MAX_BODY_LEN ? b.slice(0, MAX_BODY_LEN) : b;
       })(),
       htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : htmlBody,
+      snippet: makeSnippet(htmlBody || body),
       attachments: [],
       size: Math.min(lines.join('\n').length, 100000),
       isRead,
@@ -657,6 +659,7 @@ function parseOLMEmailXML(xmlContent: string): Omit<Email, 'id'> | null {
       date: isNaN(date.getTime()) ? new Date() : date,
       body: (() => { const b = body || preview || ''; return b.length > MAX_BODY_LEN ? b.slice(0, MAX_BODY_LEN) : b; })(),
       htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : (htmlBody || undefined),
+      snippet: makeSnippet(htmlBody || body || preview || ''),
       attachments: [],
       size: xmlContent.length,
       isRead,
