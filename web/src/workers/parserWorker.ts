@@ -7,11 +7,16 @@
 
 import JSZip from 'jszip';
 import type { Email, Contact, CalendarEvent } from '../types';
-import type { 
-  WorkerInputMessage, 
+import type {
+  WorkerInputMessage,
   WorkerOutputMessage,
-  WorkerParseContext 
+  WorkerParseContext
 } from './parserWorker.types';
+import {
+  decodeQuotedPrintable,
+  decodeRfc2047,
+  isMboxFromLine,
+} from '../services/mimeUtils';
 
 // ============================================================================
 // Worker-compatible utility functions (no DOM dependencies)
@@ -35,31 +40,6 @@ function normalizeSubject(subject: string): string {
     normalized = normalized.replace(prefixPattern, '');
   }
   return normalized.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function decodeQuotedPrintable(str: string): string {
-  return str
-    .replace(/=\r?\n/g, '')
-    .replace(/=([0-9A-F]{2})/gi, (_, hex) => 
-      String.fromCharCode(parseInt(hex, 16))
-    );
-}
-
-function decodeHeaderValue(str: string): string {
-  return str.replace(
-    /=\?([^?]+)\?([BQ])\?([^?]+)\?=/gi,
-    (_, _charset, encoding, text) => {
-      try {
-        if (encoding.toUpperCase() === 'B') {
-          return atob(text);
-        } else {
-          return decodeQuotedPrintable(text.replace(/_/g, ' '));
-        }
-      } catch {
-        return text;
-      }
-    }
-  );
 }
 
 function decodeBase64(str: string): string {
@@ -167,12 +147,6 @@ function sendError(message: string, stage?: string) {
 const MBOX_CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 const BATCH_SIZE = 100;
 
-function isFromLine(line: string): boolean {
-  if (!line.startsWith('From ')) return false;
-  const dayPattern = /(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/;
-  return dayPattern.test(line);
-}
-
 function findLastFromLine(text: string): number {
   let lastIndex = -1;
   let searchStart = text.length - 1;
@@ -194,7 +168,7 @@ function findLastFromLine(text: string): number {
     let line = text.substring(lineStart, lineEnd);
     if (line.endsWith('\r')) line = line.slice(0, -1);
     
-    if (isFromLine(line)) {
+    if (isMboxFromLine(line)) {
       lastIndex = lineStart;
       break;
     }
@@ -206,7 +180,7 @@ function findLastFromLine(text: string): number {
     if (lineEnd === -1) lineEnd = text.length;
     let line = text.substring(0, lineEnd);
     if (line.endsWith('\r')) line = line.slice(0, -1);
-    if (isFromLine(line)) {
+    if (isMboxFromLine(line)) {
       lastIndex = 0;
     }
   }
@@ -215,7 +189,7 @@ function findLastFromLine(text: string): number {
 }
 
 function parseEmailAddress(str: string): { email: string; name?: string } {
-  const trimmed = decodeHeaderValue(str.trim());
+  const trimmed = decodeRfc2047(str.trim());
   
   const angleMatch = trimmed.match(/^(?:"?(.+?)"?\s*)?<([^>]+)>$/);
   if (angleMatch) {
@@ -438,7 +412,7 @@ function parseEmailFromLines(lines: string[]): Omit<Email, 'id'> | null {
     const to = headers['to'] || '';
     const recipients = parseRecipients(to);
 
-    const subject = decodeHeaderValue(headers['subject'] || '(No Subject)');
+    const subject = decodeRfc2047(headers['subject'] || '(No Subject)');
 
     let threadId = headers['x-gm-thrid'] || 
                    headers['thread-topic'] || 
@@ -490,7 +464,7 @@ function parseEmailsFromText(text: string): Omit<Email, 'id'>[] {
   let currentEmail: string[] = [];
 
   for (const line of lines) {
-    if (isFromLine(line) && currentEmail.length > 0) {
+    if (isMboxFromLine(line) && currentEmail.length > 0) {
       const email = parseEmailFromLines(currentEmail);
       if (email) {
         emails.push(email);
