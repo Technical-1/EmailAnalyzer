@@ -7,6 +7,7 @@ import {
   MAX_DECOMPRESSED_BYTES,
 } from '../../services/mimeUtils';
 import { decodeQuotedPrintable } from '../../services/mimeUtils';
+import { decodeRfc2047 } from '../../services/mimeUtils';
 
 describe('mimeUtils size constants', () => {
   it('matches the values ported from olmParser', () => {
@@ -39,5 +40,28 @@ describe('decodeQuotedPrintable', () => {
   it('honors an explicit non-UTF-8 charset', () => {
     // 0xE9 is é in latin1/iso-8859-1
     expect(decodeQuotedPrintable('caf=E9', 'iso-8859-1')).toBe('café');
+  });
+});
+
+describe('decodeRfc2047', () => {
+  it('decodes a UTF-8 Base64 (B) encoded-word', () => {
+    // "café" -> base64 of UTF-8 bytes 63 61 66 C3 A9
+    expect(decodeRfc2047('=?UTF-8?B?Y2Fmw6k=?=')).toBe('café');
+  });
+
+  it('decodes a UTF-8 Q encoded-word with underscore-as-space', () => {
+    expect(decodeRfc2047('=?UTF-8?Q?Hi_caf=C3=A9?=')).toBe('Hi café');
+  });
+
+  it('leaves plain text untouched', () => {
+    expect(decodeRfc2047('Just a subject')).toBe('Just a subject');
+  });
+
+  it('decodes multiple adjacent encoded-words', () => {
+    expect(decodeRfc2047('=?UTF-8?B?Y2Fm?==?UTF-8?B?w6k=?=')).toBe('café');
+  });
+
+  it('falls back to the raw text on undecodable input', () => {
+    expect(decodeRfc2047('=?UTF-8?B?@@@bad@@@?=')).toBe('@@@bad@@@');
   });
 });

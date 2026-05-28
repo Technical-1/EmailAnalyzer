@@ -47,6 +47,31 @@ function normalizeCharset(charset: string): string {
   return c || 'utf-8';
 }
 
+/**
+ * RFC 2047 encoded-word decoder: =?charset?B|Q?text?=.
+ * 'B' = base64 -> bytes -> TextDecoder(charset); 'Q' = quoted-printable
+ * (charset-aware, underscores become spaces). Falls back to raw text.
+ */
+export function decodeRfc2047(value: string): string {
+  return value.replace(
+    /=\?([^?]+)\?([BQ])\?([^?]*)\?=/gi,
+    (_match, charset: string, encoding: string, text: string) => {
+      try {
+        if (encoding.toUpperCase() === 'B') {
+          const binary = atob(text);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          return new TextDecoder(normalizeCharset(charset)).decode(bytes);
+        }
+        // 'Q' branch — quoted-printable with RFC 2047 underscore-as-space.
+        return decodeQuotedPrintable(text.replace(/_/g, ' '), charset);
+      } catch {
+        return text;
+      }
+    }
+  );
+}
+
 // Field/size limits (exact values ported from olmParser.ts)
 export const MAX_SUBJECT_LEN = 1000;
 export const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB
