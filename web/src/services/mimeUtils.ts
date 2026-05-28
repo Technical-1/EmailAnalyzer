@@ -84,6 +84,27 @@ export function isMboxFromLine(line: string): boolean {
   return MBOX_FROM_RE.test(line);
 }
 
+/**
+ * Build a short plain-text snippet from HTML or text: strip script/style and
+ * tags, decode common entities, collapse whitespace, truncate with ellipsis.
+ */
+export function makeSnippet(htmlOrText: string, maxLen = 200): string {
+  if (!htmlOrText) return '';
+  const text = htmlOrText
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
+}
+
 // Field/size limits (exact values ported from olmParser.ts)
 export const MAX_SUBJECT_LEN = 1000;
 export const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB

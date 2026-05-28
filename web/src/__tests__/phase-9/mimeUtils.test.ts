@@ -9,6 +9,7 @@ import {
 import { decodeQuotedPrintable } from '../../services/mimeUtils';
 import { decodeRfc2047 } from '../../services/mimeUtils';
 import { isMboxFromLine } from '../../services/mimeUtils';
+import { makeSnippet } from '../../services/mimeUtils';
 
 describe('mimeUtils size constants', () => {
   it('matches the values ported from olmParser', () => {
@@ -88,5 +89,38 @@ describe('isMboxFromLine', () => {
 
   it('does NOT match a line missing the weekday/month shape', () => {
     expect(isMboxFromLine('From sender@example.com is my address')).toBe(false);
+  });
+});
+
+describe('makeSnippet', () => {
+  it('strips HTML tags and collapses whitespace', () => {
+    expect(makeSnippet('<p>Hello   <b>world</b></p>')).toBe('Hello world');
+  });
+
+  it('drops <style> and <script> contents', () => {
+    expect(makeSnippet('<style>.x{color:red}</style><p>Hi</p>')).toBe('Hi');
+  });
+
+  it('decodes common HTML entities', () => {
+    expect(makeSnippet('Tom &amp; Jerry &lt;3')).toBe('Tom & Jerry <3');
+  });
+
+  it('truncates to maxLen and adds an ellipsis', () => {
+    const out = makeSnippet('a'.repeat(50), 10);
+    expect(out).toBe('aaaaaaaaaa…');
+    expect(out.length).toBe(11); // 10 chars + ellipsis
+  });
+
+  it('defaults to a 200-char limit', () => {
+    const out = makeSnippet('b'.repeat(500));
+    expect(out.length).toBe(201); // 200 + ellipsis
+  });
+
+  it('does not add an ellipsis when within the limit', () => {
+    expect(makeSnippet('short')).toBe('short');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(makeSnippet('')).toBe('');
   });
 });
