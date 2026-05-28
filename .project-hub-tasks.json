@@ -1,35 +1,106 @@
 {
   "tasks": [
     {
-      "title": "Fixed: Race conditions in Zustand store email mutations",
-      "description": "In web/src/store/index.ts, 7 single-email operations (toggleEmailStar, markEmailAsRead, toggleEmailRead, deleteEmail, archiveEmail, moveEmailToFolder, restoreEmail) used stale array indices after awaiting DB operations. Concurrent mutations could cause wrong emails to be modified. Fixed by switching from index-based mutation to ID-based .map() pattern with emailIndex rebuild.",
+      "title": "Wire up searchParser — advanced search operators are non-functional",
+      "description": "services/searchParser.ts (from:, to:, subject:, is:unread, etc.) has zero importers outside tests; EmailsPage.tsx:124-130 filters with raw email.subject/sender/body.includes(query). Every structured query from AdvancedSearchBuilder literally searches for the substring 'from:bob@x.com subject:...' and matches nothing. Import searchParser, parse debouncedSearch, and apply the resulting predicate in processedEmails. While wiring it, fix the tokenizer (searchParser.ts:186-199) so it only treats word:value as an operator when the word is a known operator — otherwise URLs/times like https://x or 12:30 are split and pollute free-text search.",
       "priority": "high"
     },
     {
-      "title": "Fixed: Missing emailIndex rebuild in bulk operations",
-      "description": "In web/src/store/index.ts, deleteEmails (line ~398), archiveEmails (line ~427), and deleteFolder (line ~528) modified the emails array via .map() but did not rebuild the emailIndex Map, causing stale lookups. Fixed by adding emailIndex: buildEmailIndex(emails) to all set() calls.",
+      "title": "Worker parse path bypasses all size, zip-bomb, and field-length limits",
+      "description": "HomePage.tsx:429-436 routes every file (.olm/.mbox/.zip) through workers/parserWorker.ts, which is the live parser. Unlike the (now dead) service files, the worker's parseOLMFile (parserWorker.ts:800), parseGmailTakeoutFile (:938), and parseEmailFromLines (:354-484) enforce NO 500MB compressed cap, NO ~2GB decompressed zip-bomb guard, and NO MAX_SUBJECT/BODY/EMAIL length caps. A malicious or huge archive causes unbounded memory growth and tab OOM. Port the size validation (olmParser.ts:49-70) and per-field truncation into the worker.",
       "priority": "high"
     },
     {
-      "title": "Fixed: const reassignment build warning in parserWorker",
-      "description": "In web/src/workers/parserWorker.ts:976, a const variable 'content' was assigned null at line 1010 to help GC, causing a build warning about const reassignment. Fixed by changing to 'let content: string | null' and removing the @ts-expect-error comment.",
+      "title": "MBOX 'From ' line detection corrupts/splits emails on body text",
+      "description": "isFromLine in workers/parserWorker.ts:170-173 (mirrored in mboxParser.ts:137-141) only checks startsWith('From ') plus any weekday substring anywhere in the line. A body line like 'From Wednesday onward...' is treated as a new message boundary, truncating the real email and creating spurious fragments. Tighten the matcher to require the full 'From <addr> <Day> <Mon> ...' shape (e.g. /^From \\S+ (Mon|Tue|Wed|Thu|Fri|Sat|Sun) [A-Z][a-z]{2} /) and unescape '>From' body lines.",
+      "priority": "high"
+    },
+    {
+      "title": "Quoted-printable and RFC2047 base64 header decoding corrupt UTF-8",
+      "description": "decodeQuotedPrintable (parserWorker.ts:40-46) maps each =XX to String.fromCharCode(parseInt(hex,16)), producing one JS char per byte, so UTF-8 sequences like =C3=A9 (é) become two garbage chars. decodeHeaderValue (parserWorker.ts:53) decodes =?utf-8?B?...?= via raw atob() ignoring charset, yielding mojibake and throwing on non-Latin1. Collect decoded bytes into a Uint8Array and run TextDecoder over them honoring the declared charset (reuse the existing decodeBase64 helper).",
+      "priority": "high"
+    },
+    {
+      "title": "Loose substring domain matching mis-attributes emails to wrong services/merchants",
+      "description": "accountDetector.ts:277-282, purchaseDetector.ts:423-428, and subscriptionDetector.ts:183-187 fall back to domain.includes(baseDomain) with no dot boundary. Short base names cause false hits: 'max' matches maxwell.com, 'hp' matches php.net/shphone.com, 'apple' matches pineapple.com. subscriptionDetector is worst — domain.includes(subDomain.split('.')[0]) has no anchoring at all. This silently attributes emails to the wrong service/merchant. Replace with exact match or domain.endsWith('.' + serviceDomain) against the registrable domain.",
+      "priority": "high"
+    },
+    {
+      "title": "Threads view shows all folders' conversations, ignoring current folder",
+      "description": "EmailsPage.tsx:154-172 builds allThreads from the entire emails array (threadingService.buildThreads(emails)) and the threads useMemo filters only by search, never by currentFolder/isFavorites. Switching to Threads mode inside Trash, Archive, Favorites, or a custom folder displays conversations from every folder — including deleted/archived mail — while the header still reports the folder's email count. Derive threads from the already-folder-filtered email set before sorting.",
+      "priority": "high"
+    },
+    {
+      "title": "Backup import lacks transaction and schema/version validation",
+      "description": "backupService.ts:292-381 (importBackup) runs eight sequential bulkPut calls with no enclosing db.transaction(), so a mid-import failure (quota, decrypt error, bad data) leaves the DB half-imported with no rollback and the in-memory store inconsistent. It also never validates metadata.version against BACKUP_VERSION and casts arbitrary parsed JSON straight in, so malformed/older backups write corrupt rows (e.g. NaN timestamps that break date conversion on read). Wrap all tables in one db.transaction('rw', ...) and validate version + each record (reject NaN dates) before writing.",
+      "priority": "high"
+    },
+    {
+      "title": "Whole database (including bodies and attachments) loaded into memory at init",
+      "description": "store/index.ts:142-167 initialize/refreshAll call getEmails() which does db.emails.orderBy('date').reverse().toArray(), pulling every email's full body, htmlBody, and base64 attachments into the Zustand store, then buildThreads over all of them. getEmailHeaders/getEmailsByFolderPaginated exist for lazy loading but are unused at init. Large archives will spike memory and can OOM the tab. Load headers only at init and fetch bodies on demand via the existing getEmailBody / useLazyEmailBody.",
       "priority": "medium"
     },
     {
-      "title": "Fixed: All 37 ESLint errors across 15 files",
-      "description": "Fixed all lint errors including: @typescript-eslint/no-explicit-any violations (replaced with proper types or eslint-disable-line), react-refresh/only-export-components (added eslint-disable comments for non-component exports), no-case-declarations (wrapped switch cases in block scopes), prefer-const, unused variables, and removed invalid eslint directive comments. Result: 0 errors, 3 unfixable TanStack Virtual warnings.",
+      "title": "List rows compute stripHtml(email.body) on every render, defeating lazy bodies",
+      "description": "EmailCard.tsx:132-133 and ThreadView.tsx:71,164,229-234 call stripHtml(email.body).substring(...) per row on every render (ThreadView:229 strips the whole body with no length cap when expanded). This forces full bodies to stay in memory (defeating useLazyEmailBody) and runs regex/DOM work for every rendered and overscanned virtual row on each scroll. Precompute a short snippet/preview field at import time and render that instead.",
       "priority": "medium"
     },
     {
-      "title": "Consider: Add optimistic rollback on DB operation failure",
-      "description": "In web/src/store/index.ts, email mutation actions (toggle star, read, move, etc.) update the DB first then update state. If the DB operation succeeds but the user quickly performs another action, the state update from the first action could overwrite the second. Consider implementing optimistic updates with rollback on DB failure for better UX.",
+      "title": "Subscription amount and billing-frequency detection are unreliable",
+      "description": "subscriptionDetector.ts:195-211 extractAmount returns the first $ match anywhere in the body with no context anchoring, so footer prices or '$0.00 shipping' get reported as the subscription price. detectFrequency (:219-230) returns 'yearly' whenever the word appears even in 'billed monthly, or save yearly', and silently defaults to 'monthly' with no signal, skewing annualized-cost math. Anchor amount/frequency extraction to billing context (near 'renewal/billing/charged') and return undefined when no signal is present.",
+      "priority": "medium"
+    },
+    {
+      "title": "Locale-aware amount parsing corrupts some USD/EUR values",
+      "description": "purchaseDetector.ts:354-360: the EUR branch only converts when /,\\d{2}$/ matches, so an EUR amount like '1.234' (no cents) keeps the dot as a thousands separator and parseFloat returns 1.234 instead of 1234; cleaned.replace(/,(?=\\d{3})/g,'') leaves '1,23' intact so parseFloat('1,23') drops the cents to 1. Detect the locale/separator convention explicitly (which of comma/dot is the decimal) before stripping, rather than relying on the trailing-two-digits heuristic.",
+      "priority": "medium"
+    },
+    {
+      "title": "Custom-rule regex runs on full email body with no length/timeout bound (self-DoS)",
+      "description": "customRulesEngine.ts:153-159 compiles the user-supplied regex (condition.value) and runs it against the entire email.body for every email. A catastrophic-backtracking pattern such as (a+)+$ will freeze the tab while scanning a large archive. It's not eval/new Function, but it is a self-DoS. Bound the input length, optionally validate the pattern, and ideally evaluate rules off the main thread.",
+      "priority": "medium"
+    },
+    {
+      "title": "Base64 conversion via String.fromCharCode(...array) overflows the stack on large blobs",
+      "description": "encryptionService.ts:270 (arrayToBase64) and attachmentService.ts:58-64 do btoa(String.fromCharCode(...array)), spreading the whole byte array as function arguments. For attachments or encrypted blob backups of a few hundred KB or more this throws RangeError: Maximum call stack size exceeded (encryptBlob at encryptionService.ts:218-222 feeds whole blobs through this path). Convert in chunks or via a loop over the Uint8Array instead of spreading.",
+      "priority": "medium"
+    },
+    {
+      "title": "emailIndex rebuilt over the entire array on every single-email mutation",
+      "description": "Every store mutation (toggleEmailStar, markEmailAsRead, deleteEmail, etc.) calls buildEmailIndex(emails) over the full emails array after a one-row .map (store/index.ts:344,361,379,395 and the other mutators). For a single change that is two O(n) passes; during bulk select/operations on tens of thousands of emails this becomes quadratic. Update the single changed entry in the existing index, and only fully rebuild when array membership changes (e.g. delete).",
+      "priority": "medium"
+    },
+    {
+      "title": "Store actions and detail-page navigation swallow async errors silently",
+      "description": "store/index.ts catch blocks call logger.error, which is a no-op in production (utils/logger.ts:6-10), so a failed DB write (quota exceeded on import/delete) gives no user feedback and the UI silently desyncs. EmailDetailPage.tsx:119-149 calls archiveEmail/deleteEmail then handleBack() without awaiting (unhandled rejection after navigating away); SettingsPage.tsx:236 deleteFolder has no error handling. Await mutating actions, surface failures to the UI (toast/error state), and navigate only after the mutation resolves.",
+      "priority": "medium"
+    },
+    {
+      "title": "Threading groups unrelated emails that share a common subject",
+      "description": "threadingService.ts:67 keys threadless emails by subject:<normalized-subject>, so generic subjects like 'Invoice', 'Your order', or 'Receipt' from different senders collapse into one conversation. The docstring (lines 9-11) claims participant-overlap matching as a third step but it is never implemented. Incorporate participant/sender-domain overlap into the fallback thread key, or at minimum exclude very short/common subjects.",
+      "priority": "medium"
+    },
+    {
+      "title": "'g' keyboard sequence stacks listeners/timeouts and dialog bypasses React state",
+      "description": "useKeyboardShortcuts.ts:56-71 adds a one-shot keydown listener plus a 1s setTimeout on each 'g' press. Pressing 'g' repeatedly stacks multiple live listeners/timeouts that don't coordinate, causing double-navigation or stale handlers. Also (:47-54) the '?' shortcut toggles the dialog via document.getElementById(...).classList instead of React state, bypassing focus trapping and aria management. Track the pending handler/timeout in a ref and clear it before registering a new sequence; drive the dialog from React state.",
+      "priority": "medium"
+    },
+    {
+      "title": "Backup import file input is not reset, blocking re-import of the same file",
+      "description": "BackupPage.tsx:271-280 never clears e.target.value after handling the import, so selecting the same file again (e.g. after a failed first attempt) does not fire onChange and nothing happens with no feedback. Set e.target.value = '' after handling, matching FileDropzone.tsx:57.",
       "priority": "low"
     },
     {
-      "title": "Consider: Use Set instead of Array.includes() for bulk ID lookups",
-      "description": "In web/src/store/index.ts, deleteEmails and archiveEmails use ids.includes(e.id!) inside .map(), which is O(n) per element making the total operation O(n*m). For large email archives, converting ids to a Set first would improve performance to O(n).",
+      "title": "Remove dead code: unused window-virtual-list, prefetch helper, and stale parsers",
+      "description": "VirtualEmailListWindow (components/VirtualEmailList.tsx:87-157) and prefetchEmailBody (hooks/useLazyEmailBody.ts:72-78) are exported but never imported. The service-layer parsers olmParser.ts and mboxParser.ts are now dead since HomePage routes all parsing through the worker — keeping them risks future edits landing in non-running code (as the safety guards already did). Remove or clearly mark the unused exports, and decide whether to delete the duplicate service parsers or have the worker import shared helpers from them.",
+      "priority": "low"
+    },
+    {
+      "title": "Passphrase generator has low entropy and modulo bias",
+      "description": "encryptionService.ts:283-301 generatePassphrase picks 4 words from a 30-word list (~19.6 bits, ~810k combinations) and uses array[i] % words.length where 30 does not divide 2^32, adding slight modulo bias. This passphrase derives the AES key, and users may rely on it. Use a large wordlist (e.g. the EFF 7776-word list) and rejection-sample to remove bias.",
       "priority": "low"
     }
   ],
-  "summary": "Fixed 14 issues: 10 race condition bugs in Zustand store (stale index mutations + missing emailIndex rebuilds), 1 build warning (const reassignment in parserWorker), 37 ESLint errors across 15 files. 2 improvement suggestions remain."
+  "summary": "Found 20 issues: 6 high (advanced search non-functional, worker bypasses size/zip-bomb limits, MBOX From-line splitting, UTF-8 decode corruption, loose-domain service mis-attribution, threads view ignores folder, non-transactional/unvalidated backup import), 9 medium (full-DB-in-memory at init, per-row stripHtml, subscription amount/frequency detection, locale amount parsing, custom-regex self-DoS, base64 stack overflow on large blobs, O(n) emailIndex rebuild per mutation, silent error swallowing, subject-only thread collapse, keyboard listener leak), and 3 low (file-input reset, dead code, weak passphrase generator). Categories: 5 correctness bugs, 3 security/DoS/crypto, 4 performance, 2 data quality, 2 error handling, 2 dead code. One previously-reported store race condition was re-verified as already fixed and excluded.",
+  "_note": "Verified facts: parserWorker.ts is the live parse path for all file types (HomePage.tsx:429-436); olmParser.ts/mboxParser.ts service files are effectively dead. searchParser.ts has no non-test importers. HTML email rendering IS sanitized with DOMPurify (EmailDetailPage.tsx:291, PrintableEmail.tsx:364) — no live XSS sink. AES-GCM crypto uses fresh random 12-byte IV per encrypt + PBKDF2 100k/SHA-256 with random salt — primitives are sound; only the convenience passphrase generator is weak."
 }
