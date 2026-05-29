@@ -1,5 +1,6 @@
 import type { Email, Purchase, DetectionResult } from '../types';
 import { stripHtml, extractDomain } from '../utils/emailUtils';
+import { isDomainMatch } from './domainMatch';
 
 class PurchaseDetector {
   // Strong subject line patterns for purchases (must be primary purpose)
@@ -412,17 +413,9 @@ class PurchaseDetector {
       return this.knownMerchants[domain];
     }
 
-    // Check if domain ends with a known merchant domain
+    // Exact or subdomain match against each known merchant domain
     for (const [merchantDomain, name] of Object.entries(this.knownMerchants)) {
-      if (domain === merchantDomain || domain.endsWith('.' + merchantDomain)) {
-        return name;
-      }
-    }
-
-    // Check common subdomains
-    for (const [merchantDomain, name] of Object.entries(this.knownMerchants)) {
-      const baseDomain = merchantDomain.split('.')[0];
-      if (domain.includes(baseDomain + '.') || domain.includes('.' + baseDomain)) {
+      if (isDomainMatch(domain, merchantDomain)) {
         return name;
       }
     }
