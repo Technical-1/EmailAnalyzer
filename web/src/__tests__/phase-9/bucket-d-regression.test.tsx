@@ -6,8 +6,7 @@
  *   4. v5 migration backfills snippet field
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { render, screen, waitFor } from '@testing-library/react';
 import { insertEmail, clearAllData, getEmailBody, db } from '../../db/database';
 import { useAppStore } from '../../store';
 import { AttachmentPreview } from '../../components/AttachmentPreview';
