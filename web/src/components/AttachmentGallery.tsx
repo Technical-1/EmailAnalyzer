@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { File, FileText, Image, Music, Video, Download, Eye, Grid, List } from 'lucide-react';
 import type { Attachment, Email } from '../types';
 import { attachmentService } from '../services/attachmentService';
+import { getEmailBody } from '../db/database';
 import { AttachmentPreview } from './AttachmentPreview';
 
 interface AttachmentGalleryProps {
@@ -15,10 +16,39 @@ interface AttachmentWithEmail {
 
 type ViewMode = 'grid' | 'list';
 
+/** Cache: email id -> Record<attachmentId, base64> | null */
+type BodyCache = Map<number, Record<string, string> | null>;
+
 export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
-  const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentWithEmail | null>(null);
   const [filter, setFilter] = useState<string>('all');
+
+  // Lazy attachment data cache: email id -> Record<attachmentId, base64> | null
+  const [bodyCache, setBodyCache] = useState<BodyCache>(new Map());
+  const inFlight = useRef<Map<number, Promise<Record<string, string> | null>>>(new Map());
+
+  const fetchData = useCallback(async (emailId: number): Promise<Record<string, string> | null> => {
+    if (bodyCache.has(emailId)) return bodyCache.get(emailId) ?? null;
+    if (inFlight.current.has(emailId)) return inFlight.current.get(emailId)!;
+
+    const p = getEmailBody(emailId).then(bodyRow => {
+      const data = bodyRow?.attachmentData ?? null;
+      setBodyCache(prev => {
+        const next = new Map(prev);
+        next.set(emailId, data);
+        return next;
+      });
+      inFlight.current.delete(emailId);
+      return data;
+    }).catch(() => {
+      inFlight.current.delete(emailId);
+      return null;
+    });
+
+    inFlight.current.set(emailId, p);
+    return p;
+  }, [bodyCache]);
 
   // Collect all attachments with their parent emails
   const allAttachments: AttachmentWithEmail[] = [];
@@ -39,6 +69,26 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
   filteredAttachments.sort(
     (a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime()
   );
+
+  // Pre-fetch attachment data for visible image thumbnails in grid view.
+  // Only image attachments need their data for thumbnails; others just show an icon.
+  useEffect(() => {
+    if (viewMode !== 'grid') return;
+    const imageEmailIds = new Set<number>();
+    for (const { attachment, email } of filteredAttachments) {
+      if (
+        attachmentService.getAttachmentType(attachment.mimeType) === 'image' &&
+        email.id !== undefined &&
+        !bodyCache.has(email.id)
+      ) {
+        imageEmailIds.add(email.id);
+      }
+    }
+    for (const emailId of imageEmailIds) {
+      fetchData(emailId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, filteredAttachments.length, filter]);
 
   const filterOptions = [
     { value: 'all', label: 'All' },
@@ -133,7 +183,9 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
           {filteredAttachments.map(({ attachment, email }) => {
             const Icon = getIcon(attachment.mimeType);
             const isImage = attachmentService.getAttachmentType(attachment.mimeType) === 'image';
-            const imageUrl = isImage ? attachmentService.getImagePreviewUrl(attachment) : null;
+            const emailAttData = email.id !== undefined ? bodyCache.get(email.id) : undefined;
+            const imageData = isImage && emailAttData ? emailAttData[attachment.id] : undefined;
+            const imageUrl = imageData ? attachmentService.createDataUrl(imageData, attachment.mimeType) : null;
 
             return (
               <div
@@ -156,7 +208,7 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
                   <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                     {attachmentService.canPreview(attachment) && (
                       <button
-                        onClick={() => setPreviewAttachment(attachment)}
+                        onClick={() => setPreviewAttachment({ attachment, email })}
                         className="p-2 bg-white rounded-full hover:bg-slate-100 transition-colors"
                         title="Preview"
                       >
@@ -164,7 +216,13 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
                       </button>
                     )}
                     <button
-                      onClick={() => attachmentService.downloadAttachment(attachment)}
+                      onClick={async () => {
+                        const data = await fetchData(email.id!);
+                        const attData = data?.[attachment.id];
+                        if (attData) {
+                          attachmentService.download(attachment.filename, attachment.mimeType, attData);
+                        }
+                      }}
                       className="p-2 bg-white rounded-full hover:bg-slate-100 transition-colors"
                       title="Download"
                     >
@@ -215,7 +273,7 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
                 <div className="flex items-center gap-1">
                   {attachmentService.canPreview(attachment) && (
                     <button
-                      onClick={() => setPreviewAttachment(attachment)}
+                      onClick={() => setPreviewAttachment({ attachment, email })}
                       className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
                       title="Preview"
                     >
@@ -223,7 +281,13 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
                     </button>
                   )}
                   <button
-                    onClick={() => attachmentService.downloadAttachment(attachment)}
+                    onClick={async () => {
+                      const data = await fetchData(email.id!);
+                      const attData = data?.[attachment.id];
+                      if (attData) {
+                        attachmentService.download(attachment.filename, attachment.mimeType, attData);
+                      }
+                    }}
                     className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-colors"
                     title="Download"
                   >
@@ -238,8 +302,10 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
 
       {/* Preview Modal */}
       {previewAttachment && (
-        <AttachmentPreview
-          attachment={previewAttachment}
+        <GalleryPreviewModal
+          att={previewAttachment}
+          bodyCache={bodyCache}
+          fetchData={fetchData}
           onClose={() => setPreviewAttachment(null)}
         />
       )}
@@ -247,3 +313,30 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
   );
 }
 
+interface GalleryPreviewModalProps {
+  att: AttachmentWithEmail;
+  bodyCache: BodyCache;
+  fetchData: (id: number) => Promise<Record<string, string> | null>;
+  onClose: () => void;
+}
+
+function GalleryPreviewModal({ att, bodyCache, fetchData, onClose }: GalleryPreviewModalProps) {
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    if (att.email.id === undefined) return;
+    if (bodyCache.has(att.email.id)) return;
+    fetchData(att.email.id).then(() => setTick(t => t + 1));
+  }, [att.email.id, bodyCache, fetchData]);
+
+  const attData = att.email.id !== undefined ? bodyCache.get(att.email.id) : undefined;
+  const resolvedData = attData ? attData[att.attachment.id] : undefined;
+
+  return (
+    <AttachmentPreview
+      attachment={att.attachment}
+      resolvedData={resolvedData}
+      onClose={onClose}
+    />
+  );
+}
