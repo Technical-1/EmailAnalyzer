@@ -1,5 +1,6 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useKeyboardShortcutsDialog } from '../store/keyboardShortcutsStore';
 
 interface KeyboardShortcutsOptions {
   onToggleSidebar?: () => void;
@@ -18,20 +19,37 @@ export const KEYBOARD_SHORTCUTS = [
 
 export function useKeyboardShortcuts({ onCloseSidebar }: KeyboardShortcutsOptions = {}) {
   const navigate = useNavigate();
+  const toggleDialog = useKeyboardShortcutsDialog((s) => s.toggle);
+  const closeDialog = useKeyboardShortcutsDialog((s) => s.close);
+
+  // Track the single pending "g" sequence handler + its timeout so repeated 'g'
+  // presses replace (not stack) the pending sequence.
+  const pendingGoTo = useRef<((ev: KeyboardEvent) => void) | null>(null);
+  const goToTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPendingGoTo = useCallback(() => {
+    if (pendingGoTo.current) {
+      document.removeEventListener('keydown', pendingGoTo.current);
+      pendingGoTo.current = null;
+    }
+    if (goToTimeout.current) {
+      clearTimeout(goToTimeout.current);
+      goToTimeout.current = null;
+    }
+  }, []);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    // Don't handle shortcuts when typing in inputs
     const target = e.target as HTMLElement;
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-      // Only handle Escape in inputs
       if (e.key === 'Escape') {
         (target as HTMLInputElement).blur();
       }
       return;
     }
 
-    // Escape — close sidebar on mobile
+    // Escape — close dialog if open, else close sidebar
     if (e.key === 'Escape') {
+      closeDialog();
       onCloseSidebar?.();
       return;
     }
@@ -44,19 +62,19 @@ export function useKeyboardShortcuts({ onCloseSidebar }: KeyboardShortcutsOption
       return;
     }
 
-    // ? — toggle keyboard shortcuts dialog
+    // ? — toggle keyboard shortcuts dialog (React-state driven)
     if (e.key === '?' && e.shiftKey) {
-      const dialog = document.getElementById('keyboard-shortcuts-dialog');
-      if (dialog) {
-        dialog.classList.toggle('hidden');
-      }
+      e.preventDefault();
+      toggleDialog();
       return;
     }
 
-    // g prefix shortcuts (go to)
+    // g prefix shortcuts (go to). Replace any pending sequence first.
     if (e.key === 'g') {
+      clearPendingGoTo();
+
       const handleGoTo = (ev: KeyboardEvent) => {
-        document.removeEventListener('keydown', handleGoTo);
+        clearPendingGoTo();
         switch (ev.key) {
           case 'i': navigate('/emails'); break;
           case 'h': navigate('/'); break;
@@ -64,15 +82,19 @@ export function useKeyboardShortcuts({ onCloseSidebar }: KeyboardShortcutsOption
           case 's': navigate('/settings'); break;
         }
       };
+
+      pendingGoTo.current = handleGoTo;
       document.addEventListener('keydown', handleGoTo, { once: true });
-      // Auto-cancel after 1s if no second key
-      setTimeout(() => document.removeEventListener('keydown', handleGoTo), 1000);
+      goToTimeout.current = setTimeout(clearPendingGoTo, 1000);
       return;
     }
-  }, [navigate, onCloseSidebar]);
+  }, [navigate, onCloseSidebar, toggleDialog, closeDialog, clearPendingGoTo]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      clearPendingGoTo();
+    };
+  }, [handleKeyDown, clearPendingGoTo]);
 }
