@@ -39,6 +39,22 @@ function buildEmailIndex(emails: Email[]): Map<number, number> {
   return map;
 }
 
+// Membership-preserving single-row update: mutate the one entry, reuse the index Map.
+// Returns the new emails array + the *same* index Map (identity preserved).
+// Returns null if the id is not in the index.
+function applyInPlace(
+  emails: Email[],
+  index: Map<number, number>,
+  id: number,
+  patch: Partial<Email>
+): { emails: Email[]; emailIndex: Map<number, number> } | null {
+  const idx = index.get(id);
+  if (idx === undefined) return null;
+  const next = emails.slice(); // new array ref so Zustand notifies subscribers
+  next[idx] = { ...next[idx], ...patch };
+  return { emails: next, emailIndex: index }; // SAME Map -> O(1), no rebuild
+}
+
 interface AppState {
   // Data
   emails: Email[];
@@ -333,18 +349,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   // Toggle email star status
   toggleEmailStar: async (id: number) => {
-    const idx = get().emailIndex.get(id);
-    if (idx === undefined) return;
-    const email = get().emails[idx];
-
-    const newStarred = !email.isStarred;
-
+    const cur = get().emailIndex.get(id);
+    if (cur === undefined) return;
+    const newStarred = !get().emails[cur].isStarred;
     try {
       await updateEmailStar(id, newStarred);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, isStarred: newStarred } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { isStarred: newStarred });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to toggle star:', error);
     }
@@ -355,13 +367,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
     if (get().emails[idx].isRead) return;
-
     try {
       await updateEmailRead(id, true);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, isRead: true } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { isRead: true });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to mark as read:', error);
     }
@@ -371,15 +381,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleEmailRead: async (id: number) => {
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
-
     const newRead = !get().emails[idx].isRead;
-
     try {
       await updateEmailRead(id, newRead);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, isRead: newRead } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { isRead: newRead });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to toggle read status:', error);
     }
@@ -389,26 +396,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   deleteEmail: async (id: number) => {
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
-
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.TRASH);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { folderId: SYSTEM_FOLDERS.TRASH });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to delete email:', error);
     }
   },
   
-  // Delete multiple emails (move to trash)
+  // Delete multiple emails (move to trash) — membership-preserving bulk update
   deleteEmails: async (ids: number[]) => {
     try {
       await Promise.all(ids.map(id => updateEmailFolder(id, SYSTEM_FOLDERS.TRASH)));
-      const emails = get().emails.map(e =>
-        ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.TRASH } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const { emails: currentEmails, emailIndex } = get();
+      const next = currentEmails.slice();
+      for (const id of ids) {
+        const idx = emailIndex.get(id);
+        if (idx !== undefined) next[idx] = { ...next[idx], folderId: SYSTEM_FOLDERS.TRASH };
+      }
+      set({ emails: next, emailIndex }); // reuse same Map, O(k) not O(n)
     } catch (error) {
       logger.error('Failed to delete emails:', error);
     }
@@ -418,26 +427,28 @@ export const useAppStore = create<AppState>((set, get) => ({
   archiveEmail: async (id: number) => {
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
-
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.ARCHIVE);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { folderId: SYSTEM_FOLDERS.ARCHIVE });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to archive email:', error);
     }
   },
   
-  // Archive multiple emails
+  // Archive multiple emails — membership-preserving bulk update
   archiveEmails: async (ids: number[]) => {
     try {
       await Promise.all(ids.map(id => updateEmailFolder(id, SYSTEM_FOLDERS.ARCHIVE)));
-      const emails = get().emails.map(e =>
-        ids.includes(e.id!) ? { ...e, folderId: SYSTEM_FOLDERS.ARCHIVE } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const { emails: currentEmails, emailIndex } = get();
+      const next = currentEmails.slice();
+      for (const id of ids) {
+        const idx = emailIndex.get(id);
+        if (idx !== undefined) next[idx] = { ...next[idx], folderId: SYSTEM_FOLDERS.ARCHIVE };
+      }
+      set({ emails: next, emailIndex }); // reuse same Map, O(k) not O(n)
     } catch (error) {
       logger.error('Failed to archive emails:', error);
     }
@@ -447,13 +458,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   moveEmailToFolder: async (id: number, folderId: string) => {
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
-
     try {
       await updateEmailFolder(id, folderId);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, folderId } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { folderId });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to move email:', error);
     }
@@ -463,13 +472,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   restoreEmail: async (id: number) => {
     const idx = get().emailIndex.get(id);
     if (idx === undefined) return;
-
     try {
       await updateEmailFolder(id, SYSTEM_FOLDERS.INBOX);
-      const emails = get().emails.map(e =>
-        e.id === id ? { ...e, folderId: SYSTEM_FOLDERS.INBOX } : e
-      );
-      set({ emails, emailIndex: buildEmailIndex(emails) });
+      // Re-read state after await to avoid race (post-await race-fix)
+      const next = applyInPlace(get().emails, get().emailIndex, id, { folderId: SYSTEM_FOLDERS.INBOX });
+      if (next) set(next);
     } catch (error) {
       logger.error('Failed to restore email:', error);
     }
