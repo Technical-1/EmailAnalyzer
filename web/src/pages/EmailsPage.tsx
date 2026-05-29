@@ -11,6 +11,7 @@ import { ThreadView } from '../components/ThreadView';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS, type Email } from '../types';
 import { parseSearchQuery, filterEmails } from '../services/searchParser';
+import { buildThreadsForView } from '../utils/threadFiltering';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
 type SortField = 'date' | 'sender' | 'subject';
@@ -26,7 +27,7 @@ const THREAD_VIRTUAL_THRESHOLD = 50; // Use virtual scrolling when more than 50 
 function EmailsPageContent({ folderParam, initialListMode }: { folderParam: string | null; initialListMode: ListMode }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { emails, threads: allThreads, emptyTrash } = useAppStore();
+  const { emails, emptyTrash } = useAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -149,12 +150,14 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     return result;
   }, [emails, currentFolder, isFavorites, filter, debouncedSearch, sortField, sortOrder]);
 
-  // Show all threads when in threads mode (for instant switching)
+  // Build threads from the CURRENT folder/favorites email set so Threads mode in
+  // Trash/Archive/Favorites/custom folders shows only that view's conversations.
   const threads = useMemo(() => {
     if (listMode !== 'threads') return [];
-    
+
+    let result = buildThreadsForView(emails, { currentFolder, isFavorites });
+
     // Apply search within threads if user has entered a query (debounced)
-    let result = allThreads;
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase();
       result = result.filter(thread =>
@@ -162,13 +165,13 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         thread.participants.some(p => p.toLowerCase().includes(query)) ||
         thread.emails.some(e =>
           e.sender.toLowerCase().includes(query) ||
-          (e.searchText ?? '').toLowerCase().includes(query)
+          e.body.toLowerCase().includes(query)
         )
       );
     }
 
     return result.sort((a, b) => b.lastMessageDate.getTime() - a.lastMessageDate.getTime());
-  }, [listMode, allThreads, debouncedSearch]);
+  }, [listMode, emails, currentFolder, isFavorites, debouncedSearch]);
 
   const folderEmailCount = isFavorites 
     ? emails.filter(e => e.isStarred).length 
