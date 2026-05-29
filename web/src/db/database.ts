@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie';
 import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailBodyRecord, EmailHeader } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
 import { stripHtml } from '../utils/emailUtils';
+import { makeSnippet } from '../services/mimeUtils';
 
 // Compute bounded search text from body content (first ~2000 chars of stripped body).
 // Used to populate header rows so list search works without loading full bodies.
@@ -151,9 +152,10 @@ class EmailAnalyzerDB extends Dexie {
           attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined,
         });
 
-        // Strip body/htmlBody/attachment data from the email row; add searchText
+        // Strip body/htmlBody/attachment data from the email row; add searchText and snippet
         const searchText = makeSearchText(row.body as string | undefined, row.htmlBody as string | undefined);
-        const updatePayload: Record<string, unknown> = { body: undefined, htmlBody: undefined, searchText };
+        const snippet = makeSnippet((row.htmlBody as string | undefined) ?? (row.body as string | undefined) ?? '');
+        const updatePayload: Record<string, unknown> = { body: undefined, htmlBody: undefined, searchText, snippet };
         const slimAttachments = attachments.map(att => {
           const { data: _data, ...meta } = att;
           void _data;
