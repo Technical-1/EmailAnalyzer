@@ -16,6 +16,7 @@ export interface Email {
   folderId: string;
   threadId?: string;
   snippet?: string;
+  searchText?: string; // Bounded (~2KB) stripped body text for list search (Bucket D). Optional: older rows lack it.
   originalOlmId?: string;
   emailType: 'account_signup' | 'purchase' | 'regular';
   detectedAccount?: string;

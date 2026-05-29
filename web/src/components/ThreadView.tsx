@@ -1,9 +1,15 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronUp, Mail, MailOpen, Paperclip, Star, Users } from 'lucide-react';
 import type { Email, EmailThread } from '../types';
 import { useAppStore } from '../store';
 import { stripHtml } from '../utils/emailUtils';
+
+// TODO(parsing-bucket): replace with makeSnippet from '../services/mimeUtils' once it lands.
+function deriveSnippet(text: string, maxLen = 150): string {
+  const stripped = stripHtml(text || '');
+  return stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped;
+}
 
 interface ThreadViewProps {
   thread: EmailThread;
@@ -68,7 +74,7 @@ export function ThreadView({ thread, onEmailClick, initialExpanded = false }: Th
           </div>
 
           <div className="text-sm text-slate-600 dark:text-slate-300 mt-1 line-clamp-2">
-            {latestEmail.body.substring(0, 150)}...
+            {latestEmail.snippet ?? deriveSnippet(latestEmail.body ?? '')}{(latestEmail.snippet ?? latestEmail.body) ? '...' : ''}
           </div>
         </div>
 
@@ -121,8 +127,13 @@ interface SingleEmailViewProps {
 }
 
 function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps) {
+  const preview = useMemo(
+    () => email.snippet ?? deriveSnippet(email.body ?? '', 100),
+    [email.snippet, email.body]
+  );
+
   return (
-    <div 
+    <div
       className={`bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 p-4 cursor-pointer hover:shadow-md transition-shadow ${
         !email.isRead ? 'border-l-4 border-l-blue-500' : ''
       }`}
@@ -161,7 +172,7 @@ function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps)
           </div>
 
           <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
-            {stripHtml(email.body).substring(0, 100)}...
+            {preview}{preview ? '...' : ''}
           </div>
         </div>
 
@@ -195,6 +206,10 @@ interface ThreadEmailItemProps {
 
 function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmailItemProps) {
   const [showFull, setShowFull] = useState(expanded);
+  const collapsedPreview = useMemo(
+    () => email.snippet ?? deriveSnippet(email.body ?? '', 100),
+    [email.snippet, email.body]
+  );
 
   return (
     <div className={`border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
@@ -227,11 +242,12 @@ function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmail
 
           {showFull ? (
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-              {stripHtml(email.body)}
+              {/* TODO: load full body lazily for expanded thread items */}
+              {stripHtml(email.body ?? '')}
             </div>
           ) : (
             <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
-              {stripHtml(email.body).substring(0, 100)}...
+              {collapsedPreview}{collapsedPreview ? '...' : ''}
             </div>
           )}
         </div>

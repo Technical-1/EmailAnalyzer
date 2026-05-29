@@ -1,10 +1,16 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { format } from 'date-fns';
 import { Star, Mail, MailOpen, ShoppingBag, UserCheck, Archive, Trash2, Circle } from 'lucide-react';
 import type { Email } from '../types';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import { stripHtml } from '../utils/emailUtils';
+
+// TODO(parsing-bucket): replace with makeSnippet from '../services/mimeUtils' once it lands.
+function deriveSnippet(text: string, maxLen = 150): string {
+  const stripped = stripHtml(text || '');
+  return stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped;
+}
 
 interface EmailCardProps {
   email: Email;
@@ -13,8 +19,13 @@ interface EmailCardProps {
 
 export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardProps) {
   const { toggleEmailStar, toggleEmailRead, archiveEmail, deleteEmail, restoreEmail } = useAppStore();
-  
-  const TypeIcon = email.emailType === 'purchase' 
+
+  const preview = useMemo(
+    () => email.snippet ?? deriveSnippet(email.body ?? ''),
+    [email.snippet, email.body]
+  );
+
+  const TypeIcon = email.emailType === 'purchase'
     ? ShoppingBag 
     : email.emailType === 'account_signup' 
       ? UserCheck 
@@ -130,7 +141,7 @@ export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardPr
           </p>
 
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 line-clamp-2">
-            {stripHtml(email.body || '').substring(0, 150)}...
+            {preview}{preview ? '...' : ''}
           </p>
 
           {email.emailType !== 'regular' && (

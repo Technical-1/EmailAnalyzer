@@ -1,6 +1,14 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailBodyRecord, EmailHeader } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
+import { stripHtml } from '../utils/emailUtils';
+
+// Compute bounded search text from body content (first ~2000 chars of stripped body).
+// Used to populate header rows so list search works without loading full bodies.
+function makeSearchText(body?: string, htmlBody?: string): string {
+  const raw = body ?? htmlBody ?? '';
+  return stripHtml(raw).slice(0, 2000);
+}
 
 const SYSTEM_FOLDER_IDS: Set<string> = new Set(Object.values(SYSTEM_FOLDERS));
 
@@ -143,8 +151,9 @@ class EmailAnalyzerDB extends Dexie {
           attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined,
         });
 
-        // Strip body/htmlBody/attachment data from the email row
-        const updatePayload: Record<string, unknown> = { body: undefined, htmlBody: undefined };
+        // Strip body/htmlBody/attachment data from the email row; add searchText
+        const searchText = makeSearchText(row.body as string | undefined, row.htmlBody as string | undefined);
+        const updatePayload: Record<string, unknown> = { body: undefined, htmlBody: undefined, searchText };
         const slimAttachments = attachments.map(att => {
           const { data: _data, ...meta } = att;
           void _data;
@@ -172,10 +181,12 @@ export const insertEmail = async (email: Omit<Email, 'id'>): Promise<number> => 
       void _data;
       return meta as typeof att;
     });
+    const searchText = makeSearchText(body, htmlBody);
     const id = await db.emails.add({
       ...rest,
       attachments: slimAttachments,
       date: email.date.getTime(),
+      searchText,
     } as unknown as DBEmail);
     await db.emailBodies.put({
       id,
@@ -247,7 +258,8 @@ export const bulkInsertEmails = async (emails: Omit<Email, 'id'>[]): Promise<num
         void _data;
         return meta as typeof att;
       });
-      slimRows.push({ ...rest, attachments: slimAttachments, date: email.date.getTime() } as unknown as DBEmail);
+      const searchText = makeSearchText(body, htmlBody);
+      slimRows.push({ ...rest, attachments: slimAttachments, date: email.date.getTime(), searchText } as unknown as DBEmail);
       bodyPayloads.push({ body: body ?? '', htmlBody, attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined });
     }
     const ids = (await db.emails.bulkAdd(slimRows, { allKeys: true })) as number[];

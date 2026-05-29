@@ -3,7 +3,7 @@ import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscrip
 import { SYSTEM_FOLDERS } from '../types';
 import { logger } from '../utils/logger';
 import {
-  getEmails,
+  getEmailHeaders,
   getAccounts,
   getPurchases,
   getContacts,
@@ -140,7 +140,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       await initializeSystemFolders();
       
       const [emails, accounts, purchases, contacts, calendarEvents, folders, subscriptions, newsletters] = await Promise.all([
-        getEmails(),
+        // Load header rows only (no body/htmlBody/base64 data) — bodies fetched lazily via getEmailBody()
+        getEmailHeaders() as Promise<Email[]>,
         getAccounts(),
         getPurchases(),
         getContacts(),
@@ -149,7 +150,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         getSubscriptions(),
         getNewsletters(),
       ]);
-      
+
       // Pre-compute threads for instant switching
       const threads = threadingService.buildThreads(emails);
       
@@ -182,7 +183,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Refresh individual data types
   refreshEmails: async () => {
     try {
-      const emails = await getEmails();
+      // Load header rows only — bodies fetched lazily via getEmailBody()
+      const emails = (await getEmailHeaders()) as Email[];
       const threads = threadingService.buildThreads(emails);
       set({ emails, emailIndex: buildEmailIndex(emails), threads, totalEmailCount: emails.length });
     } catch (error) {
@@ -259,7 +261,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     
     try {
       const [emails, accounts, purchases, contacts, calendarEvents, folders, subscriptions, newsletters] = await Promise.all([
-        getEmails(),
+        // Load header rows only — bodies fetched lazily via getEmailBody()
+        getEmailHeaders() as Promise<Email[]>,
         getAccounts(),
         getPurchases(),
         getContacts(),
@@ -268,7 +271,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         getSubscriptions(),
         getNewsletters(),
       ]);
-      
+
       // Pre-compute threads
       const threads = threadingService.buildThreads(emails);
       
