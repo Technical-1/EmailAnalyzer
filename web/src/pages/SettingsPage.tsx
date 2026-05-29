@@ -85,6 +85,14 @@ export function SettingsPage() {
     }
   };
 
+  const handleDeleteFolder = async (id: string) => {
+    try {
+      await deleteFolder(id);
+    } catch (error) {
+      logger.error('Delete folder failed:', error);
+    }
+  };
+
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
@@ -233,7 +241,7 @@ export function SettingsPage() {
                   </span>
                 </div>
                 <button
-                  onClick={() => deleteFolder(folder.id)}
+                  onClick={() => handleDeleteFolder(folder.id)}
                   className="p-2 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                   title="Delete folder"
                 >
