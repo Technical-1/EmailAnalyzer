@@ -275,6 +275,8 @@ export function BackupPage() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleImport(file);
+                // Reset so selecting the same file again re-fires onChange.
+                e.target.value = '';
               }}
               disabled={isImporting}
             />

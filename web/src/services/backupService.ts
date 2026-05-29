@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import { db } from '../db/database';
 import type { DBEmail, DBAccount, DBPurchase, DBContact, DBCalendarEvent, DBFolder, DBSubscription, DBNewsletter } from '../db/database';
-import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailBodyRecord } from '../types';
 import { encryptionService } from './encryptionService';
 
 interface BackupMetadata {
@@ -15,6 +15,7 @@ interface BackupMetadata {
   folderCount: number;
   subscriptionCount: number;
   newsletterCount: number;
+  emailBodyCount: number;
   encrypted: boolean;
 }
 
@@ -28,6 +29,7 @@ interface BackupData {
   folders?: Folder[];
   subscriptions?: Subscription[];
   newsletters?: Newsletter[];
+  emailBodies?: EmailBodyRecord[];
 }
 
 interface ExportOptions {
@@ -71,6 +73,7 @@ class BackupService {
         folderCount: 0,
         subscriptionCount: 0,
         newsletterCount: 0,
+        emailBodyCount: 0,
         encrypted: options.encrypt,
       },
     };
@@ -97,6 +100,12 @@ class BackupService {
         date: new Date(e.date),
       })) as unknown as Email[];
       backup.metadata.emailCount = backup.emails.length;
+
+      // Also export the email bodies for these emails (Bucket D split — bodies live in emailBodies table)
+      const emailIds = emails.map((e) => e.id);
+      const bodyRows = await db.emailBodies.bulkGet(emailIds);
+      backup.emailBodies = bodyRows.filter((b): b is EmailBodyRecord => b !== undefined);
+      backup.metadata.emailBodyCount = backup.emailBodies.length;
     }
 
     if (options.includeAccounts) {
@@ -186,6 +195,10 @@ class BackupService {
         const encrypted = await encryptionService.encryptObject(backup.emails);
         zip.file('emails.enc', JSON.stringify(encrypted));
       }
+      if (backup.emailBodies && backup.emailBodies.length > 0) {
+        const encrypted = await encryptionService.encryptObject(backup.emailBodies);
+        zip.file('email-bodies.enc', JSON.stringify(encrypted));
+      }
       if (backup.accounts) {
         const encrypted = await encryptionService.encryptObject(backup.accounts);
         zip.file('accounts.enc', JSON.stringify(encrypted));
@@ -218,6 +231,9 @@ class BackupService {
       // Store as plain JSON
       if (backup.emails) {
         zip.file('emails.json', JSON.stringify(backup.emails));
+      }
+      if (backup.emailBodies && backup.emailBodies.length > 0) {
+        zip.file('email-bodies.json', JSON.stringify(backup.emailBodies));
       }
       if (backup.accounts) {
         zip.file('accounts.json', JSON.stringify(backup.accounts));
@@ -268,6 +284,9 @@ class BackupService {
 
     onProgress?.(10, 'Validating backup...');
 
+    // Validate version before doing anything else
+    this.validateMetadata(metadata);
+
     // Check if encrypted
     if (metadata.encrypted) {
       if (!encryptionService.isUnlocked()) {
@@ -289,100 +308,146 @@ class BackupService {
       return null;
     };
 
-    // Import emails
-    onProgress?.(20, 'Importing emails...');
+    // Read & decrypt everything up front (no async non-DB work allowed inside a Dexie tx).
+    onProgress?.(20, 'Reading backup contents...');
     const emails = await readAndParse<Email>('emails');
-    if (emails && emails.length > 0) {
-      const dbEmails: DBEmail[] = emails.map((e) => ({
-        ...e,
-        date: new Date(e.date).getTime(),
-      })) as DBEmail[];
-      await db.emails.bulkPut(dbEmails);
-    }
-
-    // Import accounts
-    onProgress?.(35, 'Importing accounts...');
+    const emailBodies = await readAndParse<EmailBodyRecord>('email-bodies');
     const accounts = await readAndParse<Account>('accounts');
-    if (accounts && accounts.length > 0) {
-      const dbAccounts: DBAccount[] = accounts.map((a) => ({
-        ...a,
-        signupDate: new Date(a.signupDate).getTime(),
-      })) as DBAccount[];
-      await db.accounts.bulkPut(dbAccounts);
-    }
-
-    // Import purchases
-    onProgress?.(50, 'Importing purchases...');
     const purchases = await readAndParse<Purchase>('purchases');
-    if (purchases && purchases.length > 0) {
-      const dbPurchases: DBPurchase[] = purchases.map((p) => ({
-        ...p,
-        purchaseDate: new Date(p.purchaseDate).getTime(),
-      })) as DBPurchase[];
-      await db.purchases.bulkPut(dbPurchases);
-    }
-
-    // Import contacts
-    onProgress?.(65, 'Importing contacts...');
     const contacts = await readAndParse<Contact>('contacts');
-    if (contacts && contacts.length > 0) {
-      const dbContacts: DBContact[] = contacts.map((c) => ({
-        ...c,
-        lastEmailDate: new Date(c.lastEmailDate).getTime(),
-      })) as DBContact[];
-      await db.contacts.bulkPut(dbContacts);
-    }
-
-    // Import calendar events
-    onProgress?.(80, 'Importing calendar events...');
     const calendarEvents = await readAndParse<CalendarEvent>('calendar-events');
-    if (calendarEvents && calendarEvents.length > 0) {
-      const dbEvents: DBCalendarEvent[] = calendarEvents.map((e) => ({
-        ...e,
-        startDate: new Date(e.startDate).getTime(),
-        endDate: new Date(e.endDate).getTime(),
-      })) as DBCalendarEvent[];
-      await db.calendarEvents.bulkPut(dbEvents);
-    }
-
-    // Import folders
-    onProgress?.(80, 'Importing folders...');
     const folders = await readAndParse<Folder>('folders');
-    if (folders && folders.length > 0) {
-      const dbFolders: DBFolder[] = folders.map((f) => ({
-        ...f,
-        createdAt: new Date(f.createdAt).getTime(),
-      })) as DBFolder[];
-      await db.folders.bulkPut(dbFolders);
-    }
-
-    // Import subscriptions
-    onProgress?.(88, 'Importing subscriptions...');
     const subscriptions = await readAndParse<Subscription>('subscriptions');
-    if (subscriptions && subscriptions.length > 0) {
-      const dbSubscriptions: DBSubscription[] = subscriptions.map((s) => ({
-        ...s,
-        lastRenewalDate: new Date(s.lastRenewalDate).getTime(),
-        nextRenewalDate: s.nextRenewalDate ? new Date(s.nextRenewalDate).getTime() : undefined,
-        emailIds: JSON.stringify(s.emailIds || []),
-      })) as unknown as DBSubscription[];
-      await db.subscriptions.bulkPut(dbSubscriptions);
-    }
-
-    // Import newsletters
-    onProgress?.(95, 'Importing newsletters...');
     const newsletters = await readAndParse<Newsletter>('newsletters');
-    if (newsletters && newsletters.length > 0) {
-      const dbNewsletters: DBNewsletter[] = newsletters.map((n) => ({
-        ...n,
-        lastEmailDate: new Date(n.lastEmailDate).getTime(),
-      })) as DBNewsletter[];
-      await db.newsletters.bulkPut(dbNewsletters);
-    }
+
+    // Map + validate dates BEFORE the transaction so any NaN throws without
+    // touching the DB. toTimestamp throws on unparseable values.
+    onProgress?.(40, 'Validating records...');
+
+    const dbEmails: DBEmail[] | null = emails && emails.length > 0
+      ? (emails.map((e) => ({ ...e, date: this.toTimestamp(e.date, 'email.date') })) as DBEmail[])
+      : null;
+
+    // emailBodies rows are stored as-is (no date fields to convert); guard for older backups lacking the field
+    const dbEmailBodies: EmailBodyRecord[] | null = emailBodies && emailBodies.length > 0
+      ? emailBodies
+      : null;
+
+    const dbAccounts: DBAccount[] | null = accounts && accounts.length > 0
+      ? (accounts.map((a) => ({
+          ...a,
+          signupDate: this.toTimestamp(a.signupDate, 'account.signupDate'),
+          lastActivityDate: a.lastActivityDate
+            ? this.toTimestamp(a.lastActivityDate, 'account.lastActivityDate')
+            : undefined,
+        })) as unknown as DBAccount[])
+      : null;
+
+    const dbPurchases: DBPurchase[] | null = purchases && purchases.length > 0
+      ? (purchases.map((p) => ({
+          ...p,
+          purchaseDate: this.toTimestamp(p.purchaseDate, 'purchase.purchaseDate'),
+        })) as DBPurchase[])
+      : null;
+
+    const dbContacts: DBContact[] | null = contacts && contacts.length > 0
+      ? (contacts.map((c) => ({
+          ...c,
+          lastEmailDate: this.toTimestamp(c.lastEmailDate, 'contact.lastEmailDate'),
+        })) as DBContact[])
+      : null;
+
+    const dbEvents: DBCalendarEvent[] | null = calendarEvents && calendarEvents.length > 0
+      ? (calendarEvents.map((e) => ({
+          ...e,
+          startDate: this.toTimestamp(e.startDate, 'calendarEvent.startDate'),
+          endDate: this.toTimestamp(e.endDate, 'calendarEvent.endDate'),
+        })) as DBCalendarEvent[])
+      : null;
+
+    const dbFolders: DBFolder[] | null = folders && folders.length > 0
+      ? (folders.map((f) => ({
+          ...f,
+          createdAt: this.toTimestamp(f.createdAt, 'folder.createdAt'),
+        })) as DBFolder[])
+      : null;
+
+    const dbSubscriptions: DBSubscription[] | null = subscriptions && subscriptions.length > 0
+      ? (subscriptions.map((s) => ({
+          ...s,
+          lastRenewalDate: this.toTimestamp(s.lastRenewalDate, 'subscription.lastRenewalDate'),
+          nextRenewalDate: s.nextRenewalDate
+            ? this.toTimestamp(s.nextRenewalDate, 'subscription.nextRenewalDate')
+            : undefined,
+          emailIds: JSON.stringify(s.emailIds || []),
+        })) as unknown as DBSubscription[])
+      : null;
+
+    const dbNewsletters: DBNewsletter[] | null = newsletters && newsletters.length > 0
+      ? (newsletters.map((n) => ({
+          ...n,
+          lastEmailDate: this.toTimestamp(n.lastEmailDate, 'newsletter.lastEmailDate'),
+        })) as DBNewsletter[])
+      : null;
+
+    // Atomic write: any throw inside aborts and rolls back ALL tables.
+    onProgress?.(70, 'Writing to database...');
+    await db.transaction(
+      'rw',
+      [
+        db.emails,
+        db.emailBodies,
+        db.accounts,
+        db.purchases,
+        db.contacts,
+        db.calendarEvents,
+        db.folders,
+        db.subscriptions,
+        db.newsletters,
+      ],
+      async () => {
+        if (dbEmails) await db.emails.bulkPut(dbEmails);
+        if (dbEmailBodies) await db.emailBodies.bulkPut(dbEmailBodies);
+        if (dbAccounts) await db.accounts.bulkPut(dbAccounts);
+        if (dbPurchases) await db.purchases.bulkPut(dbPurchases);
+        if (dbContacts) await db.contacts.bulkPut(dbContacts);
+        if (dbEvents) await db.calendarEvents.bulkPut(dbEvents);
+        if (dbFolders) await db.folders.bulkPut(dbFolders);
+        if (dbSubscriptions) await db.subscriptions.bulkPut(dbSubscriptions);
+        if (dbNewsletters) await db.newsletters.bulkPut(dbNewsletters);
+      }
+    );
 
     onProgress?.(100, 'Import complete!');
 
     return metadata;
+  }
+
+  /**
+   * Validate backup metadata. Throws if the backup version is incompatible.
+   */
+  private validateMetadata(metadata: BackupMetadata): void {
+    if (!metadata || typeof metadata.version !== 'string') {
+      throw new Error('Invalid backup file: missing or malformed metadata version');
+    }
+    if (metadata.version !== this.BACKUP_VERSION) {
+      throw new Error(
+        `Incompatible backup version "${metadata.version}". This app supports version ${this.BACKUP_VERSION}.`
+      );
+    }
+  }
+
+  /**
+   * Convert an incoming date value (ISO string, number, or Date) to a numeric
+   * timestamp. Throws if the result is not a finite number so that no NaN
+   * timestamp is ever written to an indexed date column.
+   */
+  private toTimestamp(value: unknown, field: string): number {
+    const ms = value instanceof Date ? value.getTime() : new Date(value as string | number).getTime();
+    if (!Number.isFinite(ms)) {
+      throw new Error(`Invalid date in backup (field "${field}"): ${String(value)}`);
+    }
+    return ms;
   }
 
   /**
@@ -419,6 +484,7 @@ class BackupService {
    */
   async clearAllData(): Promise<void> {
     await db.emails.clear();
+    await db.emailBodies.clear();
     await db.accounts.clear();
     await db.purchases.clear();
     await db.contacts.clear();
@@ -430,4 +496,3 @@ class BackupService {
 }
 
 export const backupService = new BackupService();
-

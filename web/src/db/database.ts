@@ -539,10 +539,15 @@ export const ensureFoldersExist = async (folderIds: string[]): Promise<void> => 
 };
 
 export const deleteFolder = async (id: string): Promise<void> => {
-  // Move all emails from this folder back to inbox before deleting
-  const emails = await db.emails.where('folderId').equals(id).toArray();
-  await Promise.all(emails.map(e => db.emails.update(e.id, { folderId: SYSTEM_FOLDERS.INBOX })));
-  await db.folders.delete(id);
+  // Move all emails from this folder back to inbox, then delete the folder —
+  // atomically, so a failure cannot orphan emails or leave a stale folder.
+  await db.transaction('rw', [db.emails, db.folders], async () => {
+    const emails = await db.emails.where('folderId').equals(id).toArray();
+    await Promise.all(
+      emails.map((e) => db.emails.update(e.id, { folderId: SYSTEM_FOLDERS.INBOX }))
+    );
+    await db.folders.delete(id);
+  });
 };
 
 export const updateFolder = async (id: string, updates: Partial<Pick<Folder, 'name' | 'color' | 'icon'>>): Promise<void> => {
@@ -654,17 +659,33 @@ const dbNewsletterToNewsletter = (dbNL: DBNewsletter): Newsletter => ({
 // ==================== UTILITY OPERATIONS ====================
 
 export const clearAllData = async (): Promise<void> => {
-  await Promise.all([
-    db.emails.clear(),
-    db.emailBodies.clear(),
-    db.accounts.clear(),
-    db.purchases.clear(),
-    db.contacts.clear(),
-    db.calendarEvents.clear(),
-    db.folders.clear(),
-    db.subscriptions.clear(),
-    db.newsletters.clear(),
-  ]);
+  await db.transaction(
+    'rw',
+    [
+      db.emails,
+      db.emailBodies,
+      db.accounts,
+      db.purchases,
+      db.contacts,
+      db.calendarEvents,
+      db.folders,
+      db.subscriptions,
+      db.newsletters,
+    ],
+    async () => {
+      await Promise.all([
+        db.emails.clear(),
+        db.emailBodies.clear(),
+        db.accounts.clear(),
+        db.purchases.clear(),
+        db.contacts.clear(),
+        db.calendarEvents.clear(),
+        db.folders.clear(),
+        db.subscriptions.clear(),
+        db.newsletters.clear(),
+      ]);
+    }
+  );
 };
 
 // ==================== EXPORT OPERATIONS ====================
