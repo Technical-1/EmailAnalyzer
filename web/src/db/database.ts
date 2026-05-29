@@ -1,13 +1,16 @@
 import Dexie, { type EntityTable } from 'dexie';
-import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter } from '../types';
+import type { Email, Account, Purchase, Contact, CalendarEvent, Folder, Subscription, Newsletter, EmailBodyRecord, EmailHeader } from '../types';
 import { SYSTEM_FOLDERS } from '../types';
 
 const SYSTEM_FOLDER_IDS: Set<string> = new Set(Object.values(SYSTEM_FOLDERS));
 
 // Database types (dates stored as timestamps)
-export interface DBEmail extends Omit<Email, 'date'> {
+// body/htmlBody are optional post-split (absent on header rows after version(5) migration)
+export interface DBEmail extends Omit<Email, 'date' | 'body' | 'htmlBody'> {
   id: number;
   date: number;
+  body?: string;
+  htmlBody?: string;
 }
 
 export interface DBAccount extends Omit<Account, 'signupDate' | 'lastActivityDate'> {
@@ -57,6 +60,7 @@ class EmailAnalyzerDB extends Dexie {
   folders!: EntityTable<DBFolder, 'id'>;
   subscriptions!: EntityTable<DBSubscription, 'id'>;
   newsletters!: EntityTable<DBNewsletter, 'id'>;
+  emailBodies!: EntityTable<EmailBodyRecord, 'id'>;
 
   constructor() {
     super('EmailAnalyzerDB');
@@ -100,6 +104,56 @@ class EmailAnalyzerDB extends Dexie {
       subscriptions: '++id, serviceName, category, isActive, lastRenewalDate',
       newsletters: '++id, senderEmail, isPromotional, lastEmailDate',
     });
+
+    // Version 5: split heavy payload (body/htmlBody/attachment data) into emailBodies
+    // so the emails table holds small header rows for cheap list loads.
+    this.version(5).stores({
+      emails: '++id, sender, date, [folderId+date], [emailType+date], [sender+date], threadId, isRead, isStarred',
+      accounts: '++id, serviceName, serviceType, domain, signupDate',
+      purchases: '++id, merchant, amount, purchaseDate, category, [merchant+purchaseDate]',
+      contacts: '++id, name, email, emailCount, lastEmailDate',
+      calendarEvents: '++id, title, startDate, endDate, isAllDay, [startDate+endDate]',
+      folders: 'id, name, isSystem, createdAt',
+      subscriptions: '++id, serviceName, category, isActive, lastRenewalDate',
+      newsletters: '++id, senderEmail, isPromotional, lastEmailDate',
+      emailBodies: 'id',
+    }).upgrade(async (tx) => {
+      // Move body/htmlBody/attachment-data out of each existing email row.
+      // Use explicit two-pass form for reliability: read all rows, then write body rows
+      // and strip fields from email rows.
+      const emailsTable = tx.table<Record<string, unknown>, number>('emails');
+      const bodiesTable = tx.table<EmailBodyRecord, number>('emailBodies');
+
+      const rows = await emailsTable.toArray();
+      for (const row of rows) {
+        const id = row.id as number;
+        const attachmentData: Record<string, string> = {};
+        const attachments = (row.attachments as Array<Record<string, unknown>> | undefined) ?? [];
+        for (const att of attachments) {
+          if (typeof att.data === 'string' && att.id != null) {
+            attachmentData[String(att.id)] = att.data as string;
+          }
+        }
+
+        // Write the body row
+        await bodiesTable.put({
+          id,
+          body: (row.body as string) ?? '',
+          htmlBody: row.htmlBody as string | undefined,
+          attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined,
+        });
+
+        // Strip body/htmlBody/attachment data from the email row
+        const updatePayload: Record<string, unknown> = { body: undefined, htmlBody: undefined };
+        const slimAttachments = attachments.map(att => {
+          const { data: _data, ...meta } = att;
+          void _data;
+          return meta;
+        });
+        updatePayload.attachments = slimAttachments;
+        await emailsTable.update(id, updatePayload);
+      }
+    });
   }
 }
 
@@ -109,10 +163,28 @@ export const db = new EmailAnalyzerDB();
 // ==================== EMAIL OPERATIONS ====================
 
 export const insertEmail = async (email: Omit<Email, 'id'>): Promise<number> => {
-  return await db.emails.add({
-    ...email,
-    date: email.date.getTime(),
-  } as DBEmail);
+  return await db.transaction('rw', db.emails, db.emailBodies, async () => {
+    const { body, htmlBody, attachments, ...rest } = email;
+    const attachmentData: Record<string, string> = {};
+    const slimAttachments = (attachments ?? []).map(att => {
+      if (att.data != null) attachmentData[att.id] = att.data;
+      const { data: _data, ...meta } = att;
+      void _data;
+      return meta as typeof att;
+    });
+    const id = await db.emails.add({
+      ...rest,
+      attachments: slimAttachments,
+      date: email.date.getTime(),
+    } as unknown as DBEmail);
+    await db.emailBodies.put({
+      id,
+      body: body ?? '',
+      htmlBody,
+      attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined,
+    });
+    return id;
+  });
 };
 
 export const getEmails = async (): Promise<Email[]> => {
@@ -138,26 +210,50 @@ export const updateEmailFolder = async (id: number, folderId: string): Promise<v
 };
 
 export const deleteEmail = async (id: number): Promise<void> => {
-  await db.emails.delete(id);
+  await db.transaction('rw', db.emails, db.emailBodies, async () => {
+    await db.emails.delete(id);
+    await db.emailBodies.delete(id);
+  });
 };
 
 export const deleteEmails = async (ids: number[]): Promise<void> => {
-  await db.emails.bulkDelete(ids);
+  await db.transaction('rw', db.emails, db.emailBodies, async () => {
+    await db.emails.bulkDelete(ids);
+    await db.emailBodies.bulkDelete(ids);
+  });
 };
 
 const dbEmailToEmail = (dbEmail: DBEmail): Email => ({
   ...dbEmail,
   date: new Date(dbEmail.date),
+  // Post-split: body/htmlBody are absent from header rows; provide empty-string fallback
+  // so the Email type contract (body: string) is satisfied. Callers needing real body
+  // must use getEmailBody() instead.
+  body: dbEmail.body ?? '',
+  htmlBody: dbEmail.htmlBody,
 });
 
-// Bulk insert emails for performance
+// Bulk insert emails for performance - splits body/attachment-data into emailBodies table
 export const bulkInsertEmails = async (emails: Omit<Email, 'id'>[]): Promise<number[]> => {
-  const dbEmails = emails.map(email => ({
-    ...email,
-    date: email.date.getTime(),
-  })) as DBEmail[];
-  
-  return await db.emails.bulkAdd(dbEmails, { allKeys: true }) as number[];
+  return await db.transaction('rw', db.emails, db.emailBodies, async () => {
+    const slimRows: DBEmail[] = [];
+    const bodyPayloads: { body: string; htmlBody?: string; attachmentData?: Record<string, string> }[] = [];
+    for (const email of emails) {
+      const { body, htmlBody, attachments, ...rest } = email;
+      const attachmentData: Record<string, string> = {};
+      const slimAttachments = (attachments ?? []).map(att => {
+        if (att.data != null) attachmentData[att.id] = att.data;
+        const { data: _data, ...meta } = att;
+        void _data;
+        return meta as typeof att;
+      });
+      slimRows.push({ ...rest, attachments: slimAttachments, date: email.date.getTime() } as unknown as DBEmail);
+      bodyPayloads.push({ body: body ?? '', htmlBody, attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined });
+    }
+    const ids = (await db.emails.bulkAdd(slimRows, { allKeys: true })) as number[];
+    await db.emailBodies.bulkPut(ids.map((id, i) => ({ id, ...bodyPayloads[i] })));
+    return ids;
+  });
 };
 
 // Get emails by folder with pagination (lazy loading)
@@ -182,21 +278,29 @@ export const getEmailCountByFolder = async (folderId: string): Promise<number> =
 };
 
 // Get email headers only (for lazy loading - body loaded on demand)
-export const getEmailHeaders = async (): Promise<Omit<Email, 'body' | 'htmlBody'>[]> => {
+// Post-split: rows physically lack body/htmlBody, so this is genuinely cheap.
+// The defensive strip handles any un-migrated rows that may still carry body.
+export const getEmailHeaders = async (): Promise<EmailHeader[]> => {
   const dbEmails = await db.emails.orderBy('date').reverse().toArray();
   return dbEmails.map(dbEmail => {
     const email = dbEmailToEmail(dbEmail);
-    const { body, htmlBody, ...rest } = email;
-    void body; void htmlBody;
-    return rest as Omit<Email, 'body' | 'htmlBody'>;
+    // Defensive: drop body/htmlBody if any un-migrated row still carries them
+    const { body: _b, htmlBody: _h, ...rest } = email;
+    void _b; void _h;
+    return rest as EmailHeader;
   });
 };
 
-// Get email body by ID (for lazy loading)
-export const getEmailBody = async (id: number): Promise<{ body: string; htmlBody?: string } | undefined> => {
+// Get email body by ID (for lazy loading) - reads from emailBodies table (post-split)
+// Falls back to the email row for any un-migrated/edge rows.
+export const getEmailBody = async (
+  id: number
+): Promise<{ body: string; htmlBody?: string; attachmentData?: Record<string, string> } | undefined> => {
+  const bodyRow = await db.emailBodies.get(id);
+  if (bodyRow) return { body: bodyRow.body, htmlBody: bodyRow.htmlBody, attachmentData: bodyRow.attachmentData };
   const dbEmail = await db.emails.get(id);
   if (!dbEmail) return undefined;
-  return { body: dbEmail.body, htmlBody: dbEmail.htmlBody };
+  return { body: dbEmail.body ?? '', htmlBody: dbEmail.htmlBody };
 };
 
 // ==================== ACCOUNT OPERATIONS ====================
@@ -540,6 +644,7 @@ const dbNewsletterToNewsletter = (dbNL: DBNewsletter): Newsletter => ({
 export const clearAllData = async (): Promise<void> => {
   await Promise.all([
     db.emails.clear(),
+    db.emailBodies.clear(),
     db.accounts.clear(),
     db.purchases.clear(),
     db.contacts.clear(),

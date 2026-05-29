@@ -183,6 +183,18 @@ export interface Newsletter {
   isPromotional: boolean;
 }
 
+// Body/heavy payload stored in a separate table for cheap header loads (Bucket D)
+export interface EmailBodyRecord {
+  id: number;           // same id as the Email row
+  body: string;
+  htmlBody?: string;
+  // base64 attachment data keyed by attachment id (kept out of the email row)
+  attachmentData?: Record<string, string>;
+}
+
+// An Email row as loaded for lists: no body/htmlBody, attachments carry metadata only (no `data`)
+export type EmailHeader = Omit<Email, 'body' | 'htmlBody'>;
+
 // Custom Rule types (for Phase 3)
 export interface CustomRule {
   id: string;
