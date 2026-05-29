@@ -600,6 +600,36 @@ export const clearAllData = async (): Promise<void> => {
 
 - [ ] Manual verification step (documented; no DOM test required since this is a one-line browser-input fix): run `npm run dev`, go to Backup & Security → Import, select a backup file, then select the **exact same file** again — the second selection must re-trigger the import (progress/message updates again) instead of silently doing nothing.
 
+### Task 11.5 — Back up & restore the `emailBodies` table (Bucket D reconciliation — CRITICAL)
+
+> **Why:** Bucket D split email `body`/`htmlBody`/attachment base64 `data` out of the `emails` rows into a
+> new `emailBodies` table (keyed by email id; type `EmailBodyRecord` in `types/index.ts`). `exportBackup`
+> currently reads only `db.emails.toArray()` (now body-less) and `importBackup` only writes `db.emails`,
+> so a backup taken after the v5 migration **loses all email body text and attachment data on restore**.
+> This task makes backups complete again. The `searchText` field lives ON the slim email row, so it is
+> already exported with the email; no extra work for searchText beyond confirming it round-trips.
+
+- [ ] **TEST (RED):** Add a round-trip body-integrity test (extend the Task 8 round-trip test or add a new
+  one in the phase-9 backup test file). Use the split-aware `bulkInsertEmails` (or `insertEmail`) to insert
+  an email WITH a body + an attachment with base64 `data`, so the body lands in `emailBodies`. Export, then
+  `clearAllData`, then import the exported blob. Assert: `await getEmailBody(id)` returns the ORIGINAL
+  `body`/`htmlBody`, and the attachment base64 `data` is restored. Confirm this FAILS before the impl below
+  (export omits emailBodies → restored body is empty).
+- [ ] **IMPL — export:** In `web/src/services/backupService.ts` `exportBackup`, also read
+  `await db.emailBodies.toArray()` and include it in the exported payload (add an `emailBodies` array to the
+  export object and its metadata counts). Read `database.ts` `exportAllData`/`ExportData` if the export shape
+  is centralized there and extend that type too.
+- [ ] **IMPL — import:** In `importBackup`, inside the SAME `db.transaction('rw', ...)` from Task 7, add
+  `db.emailBodies` to the transaction's table list and `await db.emailBodies.bulkPut(...)` the imported
+  `emailBodies` records (guard for older backups that lack the field — default to `[]`). Bump
+  `BACKUP_VERSION` if the schema shape changed, and ensure the Task 3 version check still accepts current
+  backups (decide: accept the new version; optionally still import older 1.0.0 backups that have bodies on
+  the email rows — if you do, document it).
+- [ ] **IMPL — clearAllData:** ensure `emailBodies` is also cleared (Task 10's transactional `clearAllData`
+  must include `db.emailBodies`).
+- [ ] Run the new round-trip body test + `npm run test:run` (all green) + `npm run build` + `npm run lint`.
+- [ ] Commit: `git commit -m "fix(backup): export/restore emailBodies so bodies survive backup round-trip (D reconciliation)"`
+
 ### Task 12 — Full verification
 
 - [ ] From `web/`, run all three gates and confirm each is clean:
