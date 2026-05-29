@@ -94,12 +94,12 @@ export function SenderEmailsPage() {
       result = result.filter(e => e.emailType === 'purchase');
     }
 
-    // Search filter
+    // Search filter — uses searchText (bounded ~2KB stripped body on header rows)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(email =>
         email.subject.toLowerCase().includes(query) ||
-        email.body.toLowerCase().includes(query)
+        (email.searchText ?? '').toLowerCase().includes(query)
       );
     }
 
@@ -340,7 +340,7 @@ export function SenderEmailsPage() {
                       {email.subject || '(No Subject)'}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {email.body?.substring(0, 100)}
+                      {email.snippet ?? (email.searchText ?? '').substring(0, 100)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

@@ -121,12 +121,15 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     }
 
     // Apply search (debounced to avoid scanning bodies on every keystroke)
+    // NOTE: email.searchText is a bounded (~2KB) pre-stripped body excerpt on header rows.
+    // Bucket C (Search) will later replace this block with filterEmails(parseSearchQuery(...))
+    // which reads email.searchText ?? email.body — this interim edit keeps search working.
     if (debouncedSearch) {
       const query = debouncedSearch.toLowerCase();
       result = result.filter(email =>
         email.subject.toLowerCase().includes(query) ||
         email.sender.toLowerCase().includes(query) ||
-        email.body.toLowerCase().includes(query)
+        (email.searchText ?? '').toLowerCase().includes(query)
       );
     }
 
@@ -163,7 +166,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         thread.participants.some(p => p.toLowerCase().includes(query)) ||
         thread.emails.some(e =>
           e.sender.toLowerCase().includes(query) ||
-          e.body.toLowerCase().includes(query)
+          (e.searchText ?? '').toLowerCase().includes(query)
         )
       );
     }
