@@ -1,5 +1,6 @@
 import type { Email, Account, DetectionResult } from '../types';
 import { stripHtml, extractDomain } from '../utils/emailUtils';
+import { isDomainMatch } from './domainMatch';
 
 class AccountDetector {
   // Strong subject line patterns for account signups (must be primary purpose of email)
@@ -266,17 +267,9 @@ class AccountDetector {
       return this.knownServices[domain];
     }
 
-    // Check if domain ends with a known service domain
+    // Exact or subdomain match against each known service domain
     for (const [serviceDomain, info] of Object.entries(this.knownServices)) {
-      if (domain === serviceDomain || domain.endsWith('.' + serviceDomain)) {
-        return info;
-      }
-    }
-
-    // Check common subdomains (e.g., mail.netflix.com, noreply.spotify.com)
-    for (const [serviceDomain, info] of Object.entries(this.knownServices)) {
-      const baseDomain = serviceDomain.split('.')[0];
-      if (domain.includes(baseDomain + '.') || domain.includes('.' + baseDomain)) {
+      if (isDomainMatch(domain, serviceDomain)) {
         return info;
       }
     }
