@@ -169,6 +169,28 @@ describe('searchParser', () => {
     });
   });
 
+  describe('filterEmails + searchText', () => {
+    it('matches body via searchText when body is absent (post table-split)', () => {
+      const email = {
+        id: 1, subject: 'Hi', sender: 'a@x.com', recipients: ['b@y.com'],
+        date: new Date(), body: '', searchText: 'quarterly invoice total due',
+        attachments: [], size: 0, isRead: false, isStarred: false,
+        folderId: 'inbox', emailType: 'regular' as const,
+      } as Email;
+      expect(filterEmails([email], parseSearchQuery('invoice')).length).toBe(1);
+      expect(filterEmails([email], parseSearchQuery('body:quarterly')).length).toBe(1);
+    });
+
+    it('still matches via body when searchText is absent (pre table-split)', () => {
+      const email = {
+        id: 2, subject: 'Hi', sender: 'a@x.com', recipients: [],
+        date: new Date(), body: 'legacy body text', attachments: [], size: 0,
+        isRead: false, isStarred: false, folderId: 'inbox', emailType: 'regular' as const,
+      } as Email;
+      expect(filterEmails([email], parseSearchQuery('legacy')).length).toBe(1);
+    });
+  });
+
   describe('getSearchTerms', () => {
     it('should extract all search terms', () => {
       const search = parseSearchQuery('hello world from:amazon subject:order');

@@ -248,7 +248,7 @@ export function filterEmails(emails: Email[], search: ParsedSearch): Email[] {
       const searchText = search.freeText.toLowerCase();
       const matchesSubject = email.subject.toLowerCase().includes(searchText);
       const matchesSender = email.sender.toLowerCase().includes(searchText);
-      const matchesBody = email.body.toLowerCase().includes(searchText);
+      const matchesBody = (email.searchText ?? email.body ?? '').toLowerCase().includes(searchText);
       
       if (!matchesSubject && !matchesSender && !matchesBody) {
         return false;
@@ -281,7 +281,7 @@ export function filterEmails(emails: Email[], search: ParsedSearch): Email[] {
 
     // Body filter
     if (search.body) {
-      if (!email.body.toLowerCase().includes(search.body)) {
+      if (!(email.searchText ?? email.body ?? '').toLowerCase().includes(search.body)) {
         return false;
       }
     }
