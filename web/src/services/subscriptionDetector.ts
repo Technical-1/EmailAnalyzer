@@ -1,5 +1,6 @@
 import type { Email, Subscription } from '../types';
 import { stripHtml, extractDomain, formatDomainAsName } from '../utils/emailUtils';
+import { isDomainMatch } from './domainMatch';
 
 /**
  * Detector for recurring subscription services
@@ -181,7 +182,7 @@ class SubscriptionDetector {
     }
 
     for (const [subDomain, info] of Object.entries(this.knownSubscriptions)) {
-      if (domain.endsWith('.' + subDomain) || domain.includes(subDomain.split('.')[0])) {
+      if (isDomainMatch(domain, subDomain)) {
         return info;
       }
     }
