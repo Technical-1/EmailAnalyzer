@@ -1,5 +1,5 @@
 import type { Email, EmailThread } from '../types';
-import { normalizeSubject } from '../utils/emailUtils';
+import { normalizeSubject, extractDomain } from '../utils/emailUtils';
 
 /**
  * Service for grouping emails into conversation threads
@@ -57,14 +57,17 @@ class ThreadingService {
 
     // Fallback: Normalize subject for thread matching (for legacy emails without threadId)
     const normalizedSubject = normalizeSubject(email.subject);
-    
-    // Create key from normalized subject
+
     // Empty subjects get unique keys
     if (!normalizedSubject) {
       return `single:${email.id || Math.random()}`;
     }
 
-    return `subject:${normalizedSubject.toLowerCase().replace(/\s+/g, '-')}`;
+    // Scope the subject key by sender domain so identical generic subjects
+    // ('Invoice', 'Receipt', 'Your order') from different senders do not merge.
+    const domain = extractDomain(email.sender) || 'unknown';
+    const subjectSlug = normalizedSubject.toLowerCase().replace(/\s+/g, '-');
+    return `subject:${domain}:${subjectSlug}`;
   }
 
   /**
