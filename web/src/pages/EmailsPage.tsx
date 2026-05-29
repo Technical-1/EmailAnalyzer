@@ -10,6 +10,7 @@ import { VirtualThreadList } from '../components/VirtualThreadList';
 import { ThreadView } from '../components/ThreadView';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS, type Email } from '../types';
+import { parseSearchQuery, filterEmails } from '../services/searchParser';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
 type SortField = 'date' | 'sender' | 'subject';
@@ -120,17 +121,12 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         break;
     }
 
-    // Apply search (debounced to avoid scanning bodies on every keystroke)
-    // NOTE: email.searchText is a bounded (~2KB) pre-stripped body excerpt on header rows.
-    // Bucket C (Search) will later replace this block with filterEmails(parseSearchQuery(...))
-    // which reads email.searchText ?? email.body — this interim edit keeps search working.
-    if (debouncedSearch) {
-      const query = debouncedSearch.toLowerCase();
-      result = result.filter(email =>
-        email.subject.toLowerCase().includes(query) ||
-        email.sender.toLowerCase().includes(query) ||
-        (email.searchText ?? '').toLowerCase().includes(query)
-      );
+    // Apply search via the operator-aware parser (debounced).
+    // Plain queries fall through to ParsedSearch.freeText, which filterEmails
+    // matches against subject/sender/body — preserving prior behavior.
+    // Operator queries (from:, subject:, is:unread, type:, in:, date:, etc.) now work.
+    if (debouncedSearch.trim()) {
+      result = filterEmails(result, parseSearchQuery(debouncedSearch));
     }
 
     // Apply sorting
