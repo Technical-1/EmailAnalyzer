@@ -28,6 +28,7 @@ import {
   type ExportData,
 } from '../db/database';
 import { threadingService } from '../services/threadingService';
+import { useToastStore } from '../components/Toast';
 
 // Build a Map of email ID -> array index for O(1) lookups
 function buildEmailIndex(emails: Email[]): Map<number, number> {
@@ -333,6 +334,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to clear data:', error);
+      useToastStore.getState().showError('Failed to clear data.');
     }
   },
   
@@ -359,9 +361,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to toggle star:', error);
+      useToastStore.getState().showError('Failed to update star.');
     }
   },
-  
+
   // Mark email as read
   markEmailAsRead: async (id: number) => {
     const idx = get().emailIndex.get(id);
@@ -374,9 +377,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to mark as read:', error);
+      useToastStore.getState().showError('Failed to mark email as read.');
     }
   },
-  
+
   // Toggle email read/unread status
   toggleEmailRead: async (id: number) => {
     const idx = get().emailIndex.get(id);
@@ -389,6 +393,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to toggle read status:', error);
+      useToastStore.getState().showError('Failed to update read status.');
     }
   },
   
@@ -403,6 +408,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to delete email:', error);
+      useToastStore.getState().showError('Failed to delete email.');
     }
   },
   
@@ -420,6 +426,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ emails: next, emailIndex }); // reuse same Map, O(k) not O(n)
     } catch (error) {
       logger.error('Failed to delete emails:', error);
+      useToastStore.getState().showError('Failed to move emails to trash.');
     }
   },
   
@@ -434,9 +441,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to archive email:', error);
+      useToastStore.getState().showError('Failed to archive email.');
     }
   },
-  
+
   // Archive multiple emails — membership-preserving bulk update
   archiveEmails: async (ids: number[]) => {
     try {
@@ -451,6 +459,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ emails: next, emailIndex }); // reuse same Map, O(k) not O(n)
     } catch (error) {
       logger.error('Failed to archive emails:', error);
+      useToastStore.getState().showError('Failed to archive emails.');
     }
   },
   
@@ -465,6 +474,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to move email:', error);
+      useToastStore.getState().showError('Failed to move email.');
     }
   },
   
@@ -479,6 +489,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (next) set(next);
     } catch (error) {
       logger.error('Failed to restore email:', error);
+      useToastStore.getState().showError('Failed to restore email.');
     }
   },
   
@@ -494,6 +505,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to permanently delete email:', error);
+      useToastStore.getState().showError('Failed to permanently delete email.');
     }
   },
   
@@ -514,6 +526,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to empty trash:', error);
+      useToastStore.getState().showError('Failed to empty trash.');
     }
   },
   
@@ -536,6 +549,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to create folder:', error);
+      useToastStore.getState().showError('Failed to create folder.');
     }
   },
   
@@ -557,6 +571,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to delete folder:', error);
+      useToastStore.getState().showError('Failed to delete folder.');
     }
   },
   
@@ -571,6 +586,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to update contact:', error);
+      useToastStore.getState().showError('Failed to update contact.');
     }
   },
   
@@ -590,6 +606,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to toggle calendar event read status:', error);
+      useToastStore.getState().showError('Failed to update event.');
     }
   },
   
@@ -607,6 +624,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to mark calendar event as read:', error);
+      useToastStore.getState().showError('Failed to mark event as read.');
     }
   },
   
@@ -619,6 +637,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to delete calendar event:', error);
+      useToastStore.getState().showError('Failed to delete event.');
     }
   },
   
@@ -631,6 +650,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
     } catch (error) {
       logger.error('Failed to delete calendar events:', error);
+      useToastStore.getState().showError('Failed to delete events.');
     }
   },
   
@@ -655,6 +675,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       URL.revokeObjectURL(url);
     } catch (error) {
       logger.error('Failed to download export:', error);
+      useToastStore.getState().showError('Failed to download export.');
     }
   },
 }));
