@@ -5,6 +5,7 @@ import { logger } from '../utils/logger';
 interface EmailBody {
   body: string;
   htmlBody?: string;
+  attachmentData?: Record<string, string>; // base64 data keyed by attachment id
 }
 
 interface UseLazyEmailBodyResult {

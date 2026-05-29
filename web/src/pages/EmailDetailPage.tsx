@@ -5,6 +5,8 @@ import DOMPurify from 'dompurify';
 import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck } from 'lucide-react';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
+import { useLazyEmailBody } from '../hooks/useLazyEmailBody';
+import { attachmentService } from '../services/attachmentService';
 
 export function EmailDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -30,6 +32,10 @@ export function EmailDetailPage() {
     const emailId = parseInt(id);
     return emails.find(e => e.id === emailId) ?? null;
   }, [id, emails]);
+
+  // Lazy-load body/htmlBody/attachmentData from the emailBodies table
+  // (store rows carry only header data after the v5 split)
+  const { body: lazyBody } = useLazyEmailBody(email?.id);
 
   // Scroll to top when opening email
   useEffect(() => {
@@ -248,7 +254,7 @@ export function EmailDetailPage() {
             </div>
           )}
 
-          {/* Attachments */}
+          {/* Attachments — metadata from header row; base64 data from lazyBody.attachmentData */}
           {email.attachments.length > 0 && (
             <div className="mt-4">
               <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-2">
@@ -256,26 +262,34 @@ export function EmailDetailPage() {
                 <span>{email.attachments.length} attachment(s)</span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {email.attachments.map(attachment => (
-                  <div
-                    key={attachment.id}
-                    className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm"
-                  >
-                    {attachment.filename} ({(attachment.size / 1024).toFixed(1)} KB)
-                  </div>
-                ))}
+                {email.attachments.map(attachment => {
+                  const data = lazyBody?.attachmentData?.[attachment.id];
+                  const attWithData = data ? { ...attachment, data } : attachment;
+                  return (
+                    <button
+                      key={attachment.id}
+                      className="px-3 py-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-sm hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                      title={data ? `Download ${attachment.filename}` : 'Loading attachment data...'}
+                      disabled={!data}
+                      onClick={() => data && attachmentService.downloadAttachment(attWithData)}
+                    >
+                      {attachment.filename} ({(attachment.size / 1024).toFixed(1)} KB)
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
         </div>
 
         {/* Body - HTML is sanitized with DOMPurify before rendering */}
+        {/* Sources from lazy hook (body/htmlBody live in emailBodies table post-split) */}
         <div className="p-6">
-          {email.htmlBody ? (
-            <SanitizedHtmlContent html={email.htmlBody} />
+          {lazyBody?.htmlBody ? (
+            <SanitizedHtmlContent html={lazyBody.htmlBody} />
           ) : (
             <pre className="whitespace-pre-wrap font-sans text-slate-700 dark:text-slate-300">
-              {email.body}
+              {lazyBody?.body ?? ''}
             </pre>
           )}
         </div>
