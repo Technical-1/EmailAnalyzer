@@ -192,21 +192,30 @@ class SubscriptionDetector {
 
   /**
    * Extract subscription amount from text
+   * Only trusts a currency value that sits within a billing-context window.
    */
   private extractAmount(text: string): { amount?: number; currency: string } {
+    // Billing-context keywords that must appear NEAR the price to trust it
+    const billingContext = /(?:charged?|charge|bill(?:ed|ing)?|renew(?:s|al|ed)?|recurring|payment|per\s+(?:month|year|week)|\/(?:mo|month|yr|year|wk|week))/i;
+
     const currencyPatterns: { symbol: string; pattern: RegExp }[] = [
-      { symbol: 'USD', pattern: /\$\s*([\d,]+\.\d{2})/i },
-      { symbol: 'EUR', pattern: /€\s*([\d,]+[.,]\d{2})/i },
-      { symbol: 'GBP', pattern: /£\s*([\d,]+\.\d{2})/i },
-      { symbol: 'JPY', pattern: /¥\s*([\d,]+)/i },
+      { symbol: 'USD', pattern: /\$\s*([\d,]+\.\d{2})/g },
+      { symbol: 'EUR', pattern: /€\s*([\d,]+[.,]\d{2})/g },
+      { symbol: 'GBP', pattern: /£\s*([\d,]+\.\d{2})/g },
+      { symbol: 'JPY', pattern: /¥\s*([\d,]+)/g },
     ];
 
-    for (const currencyInfo of currencyPatterns) {
-      const match = text.match(currencyInfo.pattern);
-      if (match) {
-        const amount = parseFloat(match[1].replace(/,/g, ''));
+    for (const { symbol, pattern } of currencyPatterns) {
+      for (const match of text.matchAll(pattern)) {
+        const idx = match.index ?? 0;
+        // Window of +/- 40 chars around the matched price
+        const window = text.slice(Math.max(0, idx - 40), idx + match[0].length + 40);
+        if (!billingContext.test(window)) continue;
+
+        const raw = match[1].replace(/,/g, '');
+        const amount = parseFloat(raw);
         if (!isNaN(amount) && amount > 0) {
-          return { amount, currency: currencyInfo.symbol };
+          return { amount, currency: symbol };
         }
       }
     }
@@ -216,18 +225,19 @@ class SubscriptionDetector {
 
   /**
    * Detect billing frequency from text
+   * Returns a frequency only when a billing/charge verb or per-X phrase anchors it.
+   * Returns undefined when there is no billing signal.
    */
   private detectFrequency(text: string): Subscription['frequency'] | undefined {
-    if (/(?:yearly|annual|annually|per year|\/year)/i.test(text)) {
-      return 'yearly';
-    }
-    if (/(?:weekly|per week|\/week)/i.test(text)) {
-      return 'weekly';
-    }
-    if (/(?:monthly|per month|\/month|each month)/i.test(text)) {
-      return 'monthly';
-    }
-    return 'monthly'; // Default assumption
+    // Frequency is only trusted when tied to a billing/charge verb or a per-X phrase.
+    const yearly = /(?:bill(?:ed)?|charged?|renew(?:s|al|ed)?|recurring)[^.]*?(?:yearly|annual(?:ly)?|per\s+year|\/(?:yr|year))|(?:per\s+year|\/(?:yr|year))/i;
+    const weekly = /(?:bill(?:ed)?|charged?|renew(?:s|al|ed)?|recurring)[^.]*?(?:weekly|per\s+week|\/(?:wk|week))|(?:per\s+week|\/(?:wk|week))/i;
+    const monthly = /(?:bill(?:ed)?|charged?|renew(?:s|al|ed)?|recurring)[^.]*?(?:monthly|per\s+month|\/(?:mo|month)|each\s+month)|(?:per\s+month|\/(?:mo|month)|each\s+month)/i;
+
+    if (yearly.test(text)) return 'yearly';
+    if (weekly.test(text)) return 'weekly';
+    if (monthly.test(text)) return 'monthly';
+    return undefined; // no billing signal -> unknown
   }
 
   /**
