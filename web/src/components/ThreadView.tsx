@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp, Mail, MailOpen, Paperclip, Star, Users } from '
 import type { Email, EmailThread } from '../types';
 import { useAppStore } from '../store';
 import { stripHtml } from '../utils/emailUtils';
+import { useLazyEmailBody } from '../hooks/useLazyEmailBody';
 
 // TODO(parsing-bucket): replace with makeSnippet from '../services/mimeUtils' once it lands.
 function deriveSnippet(text: string, maxLen = 150): string {
@@ -211,11 +212,21 @@ function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmail
     [email.snippet, email.body]
   );
 
+  // Lazy-load body only when item is expanded (on demand, not eagerly)
+  const { body: lazyBody, isLoading: bodyLoading } = useLazyEmailBody(showFull ? email.id : undefined);
+
+  const expandedBodyText = useMemo(() => {
+    if (!showFull) return '';
+    if (lazyBody?.htmlBody) return stripHtml(lazyBody.htmlBody);
+    if (lazyBody?.body) return lazyBody.body;
+    return '';
+  }, [showFull, lazyBody]);
+
   return (
     <div className={`border-b border-slate-100 dark:border-slate-700/50 last:border-b-0 ${
       !email.isRead ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''
     }`}>
-      <div 
+      <div
         className="p-4 flex items-start gap-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors"
         onClick={() => setShowFull(!showFull)}
       >
@@ -242,8 +253,11 @@ function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmail
 
           {showFull ? (
             <div className="mt-2 text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-              {/* TODO: load full body lazily for expanded thread items */}
-              {stripHtml(email.body ?? '')}
+              {bodyLoading ? (
+                <span className="text-slate-400 italic">Loading…</span>
+              ) : (
+                expandedBodyText || <span className="text-slate-400 italic">No body content</span>
+              )}
             </div>
           ) : (
             <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
