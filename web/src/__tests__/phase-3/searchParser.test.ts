@@ -97,6 +97,34 @@ describe('searchParser', () => {
       expect(result.freeText).toBe('hello world');
       expect(result.from).toBe('test@example.com');
     });
+
+    it('should keep a URL as free text, not an operator', () => {
+      const result = parseSearchQuery('check https://example.com now');
+      expect(result.freeText).toBe('check https://example.com now');
+      // https: must NOT be interpreted as an operator
+      expect(result.from).toBeUndefined();
+      expect(result.subject).toBeUndefined();
+      expect(result.body).toBeUndefined();
+    });
+
+    it('should keep a time value as free text, not an operator', () => {
+      const result = parseSearchQuery('meeting at 12:30 today');
+      expect(result.freeText).toBe('meeting at 12:30 today');
+      expect(result.from).toBeUndefined();
+      expect(result.subject).toBeUndefined();
+    });
+
+    it('should keep an unknown word:value token as free text', () => {
+      const result = parseSearchQuery('foo:bar hello');
+      expect(result.freeText).toBe('foo:bar hello');
+      expect(result.from).toBeUndefined();
+    });
+
+    it('should still parse a real operator mixed with a URL', () => {
+      const result = parseSearchQuery('from:bob see https://x.com/y');
+      expect(result.from).toBe('bob');
+      expect(result.freeText).toBe('see https://x.com/y');
+    });
   });
 
   describe('filterEmails', () => {
