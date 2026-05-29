@@ -4,6 +4,7 @@ import { Layout } from './components/Layout';
 import { HomePage } from './pages/HomePage';
 import { DndProvider } from './components/DndProvider';
 import { UndoToastContainer } from './components/UndoToast';
+import { ToastContainer } from './components/Toast';
 import { useAppStore } from './store';
 
 // Lazy-load all non-critical pages for code splitting
@@ -100,6 +101,7 @@ function App() {
       <DndProvider>
         <AppContent />
         <UndoToastContainer />
+        <ToastContainer />
       </DndProvider>
     </BrowserRouter>
   );
