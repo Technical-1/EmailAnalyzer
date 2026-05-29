@@ -347,19 +347,52 @@ class PurchaseDetector {
   }
 
   private parseAmount(amountStr: string, currency: string): number {
-    let cleaned = amountStr.replace(/\s/g, '');
-    
-    // Handle European format (1.234,56 or 1 234,56)
-    if (currency === 'EUR' || currency === 'CHF' || currency === 'BRL') {
-      // Check if comma is decimal separator
-      if (/,\d{2}$/.test(cleaned)) {
+    // Strip spaces (used as thousands separators in some locales) and apostrophes (CHF)
+    let cleaned = amountStr.replace(/[\s']/g, '');
+
+    // CHF uses apostrophe for thousands (already stripped above) and dot for decimal,
+    // so it behaves like a comma-decimal locale ONLY for the comma separator.
+    const commaDecimalLocale = currency === 'EUR' || currency === 'BRL';
+    const commaDecimalOrCHF = commaDecimalLocale || currency === 'CHF';
+    const lastComma = cleaned.lastIndexOf(',');
+    const lastDot = cleaned.lastIndexOf('.');
+
+    if (lastComma !== -1 && lastDot !== -1) {
+      // Both separators present: the LAST one is the decimal separator.
+      if (lastComma > lastDot) {
+        // comma is decimal, dot is thousands (e.g. 1.234,56)
         cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+      } else {
+        // dot is decimal, comma is thousands (e.g. 1,234.56)
+        cleaned = cleaned.replace(/,/g, '');
       }
+    } else if (lastComma !== -1) {
+      // Only commas present.
+      const tail = cleaned.slice(lastComma + 1);
+      // Treat as decimal if 1-2 trailing digits AND (comma-decimal locale OR exactly one comma)
+      const oneComma = cleaned.indexOf(',') === lastComma;
+      if (tail.length >= 1 && tail.length <= 2 && (commaDecimalOrCHF || oneComma)) {
+        cleaned = cleaned.replace(',', '.');
+      } else {
+        // comma(s) are thousands separators
+        cleaned = cleaned.replace(/,/g, '');
+      }
+    } else if (lastDot !== -1) {
+      // Only dots present.
+      const tail = cleaned.slice(lastDot + 1);
+      const oneDot = cleaned.indexOf('.') === lastDot;
+      // In comma-decimal locales a lone dot is a thousands separator (1.234 -> 1234),
+      // UNLESS it clearly looks like cents in a non-comma locale.
+      if (commaDecimalLocale) {
+        // dot is thousands -> drop it (1.234 -> 1234, 1.234.567 -> 1234567)
+        cleaned = cleaned.replace(/\./g, '');
+      } else if (!(tail.length >= 1 && tail.length <= 2 && oneDot)) {
+        // non-comma locale but dot is grouping (e.g. 1.234.567)
+        cleaned = cleaned.replace(/\./g, '');
+      }
+      // else: dot is the decimal point, leave as-is
     }
-    
-    // Remove thousand separators
-    cleaned = cleaned.replace(/[']/g, '').replace(/,(?=\d{3})/g, '');
-    
+
     const amount = parseFloat(cleaned);
     return isNaN(amount) ? 0 : amount;
   }
