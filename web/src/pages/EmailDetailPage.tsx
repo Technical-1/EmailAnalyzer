@@ -121,9 +121,9 @@ export function EmailDetailPage() {
           {/* Archive/Restore based on folder */}
           {email.folderId === SYSTEM_FOLDERS.TRASH ? (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (email.id) {
-                  restoreEmail(email.id);
+                  await restoreEmail(email.id);
                   handleBack();
                 }
               }}
@@ -134,9 +134,9 @@ export function EmailDetailPage() {
             </button>
           ) : email.folderId !== SYSTEM_FOLDERS.ARCHIVE ? (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (email.id) {
-                  archiveEmail(email.id);
+                  await archiveEmail(email.id);
                   handleBack();
                 }
               }}
@@ -150,9 +150,9 @@ export function EmailDetailPage() {
           {/* Delete/Permanent delete */}
           {email.folderId === SYSTEM_FOLDERS.TRASH ? (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (email.id && confirm('Permanently delete this email? This cannot be undone.')) {
-                  permanentlyDeleteEmail(email.id);
+                  await permanentlyDeleteEmail(email.id);
                   handleBack();
                 }
               }}
@@ -163,9 +163,9 @@ export function EmailDetailPage() {
             </button>
           ) : (
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (email.id) {
-                  deleteEmail(email.id);
+                  await deleteEmail(email.id);
                   handleBack();
                 }
               }}
