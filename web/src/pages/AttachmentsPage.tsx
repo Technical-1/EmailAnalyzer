@@ -68,12 +68,12 @@ function useAttachmentData(
   bodyCache: BodyCache,
   fetchData: (id: number) => Promise<Record<string, string> | null>
 ): Record<string, string> | null {
-  const [, setTick] = useState(0);
-
+  // No local force-update needed: fetchData resolves by calling setBodyCache in
+  // the parent, which re-renders this component with the populated cache.
   useEffect(() => {
     if (emailId === undefined) return;
     if (bodyCache.has(emailId)) return;
-    fetchData(emailId).then(() => setTick(t => t + 1));
+    void fetchData(emailId);
   }, [emailId, bodyCache, fetchData]);
 
   if (emailId === undefined) return null;

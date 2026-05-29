@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import JSZip from 'jszip';
 import { backupService } from '../../services/backupService';
 import { db, bulkInsertEmails, getEmailBody, clearAllData } from '../../db/database';
@@ -150,6 +150,56 @@ describe('importBackup robustness (phase-9)', () => {
     expect(await db.emails.count()).toBe(0);
     expect(await db.accounts.count()).toBe(0);
     expect(await db.contacts.count()).toBe(0);
+  });
+
+  // Rollback when a write throws INSIDE the transaction (after an earlier table
+  // has already been written) — proves the rw transaction truly rolls back,
+  // not just that pre-transaction validation rejects poison records.
+  it('rolls back emails already written when a later table write throws inside the transaction', async () => {
+    const file = await makeBackupZip({
+      emails: [
+        {
+          subject: 'Written first',
+          sender: 'a@b.com',
+          recipients: [],
+          date: new Date().toISOString(),
+          body: '',
+          attachments: [],
+          size: 0,
+          isRead: false,
+          isStarred: false,
+          folderId: 'inbox',
+          emailType: 'regular',
+        },
+      ],
+      accounts: [
+        {
+          serviceName: 'Svc',
+          serviceType: 'other',
+          domain: 'b.com',
+          email: 'a@b.com',
+          signupDate: new Date().toISOString(),
+          emailIds: [],
+        },
+      ],
+    });
+
+    // emails are bulkPut before accounts inside the same transaction; force the
+    // accounts write to throw so the (already-written) emails must be rolled back.
+    const spy = vi
+      .spyOn(db.accounts, 'bulkPut')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated mid-transaction failure');
+      });
+
+    try {
+      await expect(backupService.importBackup(file)).rejects.toThrow(/simulated mid-transaction failure/);
+      // The transaction aborted: the emails written before the failure are gone.
+      expect(await db.emails.count()).toBe(0);
+      expect(await db.accounts.count()).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   // Task 8 — TEST: full export → import round-trip preserves data

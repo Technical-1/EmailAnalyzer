@@ -298,6 +298,7 @@ function parseMimeParts(body: string, boundary: string): { text?: string; html?:
     
     const partContentType = contentTypeMatch[1].toLowerCase().trim();
     const partEncoding = encodingMatch?.[1]?.toLowerCase() || '7bit';
+    const partCharset = partHeaders.match(/charset=["']?([^"';\s]+)["']?/i)?.[1];
     
     if (partContentType.includes('multipart/')) {
       const nestedBoundaryMatch = partHeaders.match(/boundary=["']?([^"';\s\n]+)["']?/i);
@@ -318,7 +319,7 @@ function parseMimeParts(body: string, boundary: string): { text?: string; html?:
         // Keep original if decode fails
       }
     } else if (partEncoding === 'quoted-printable') {
-      partContent = decodeQuotedPrintable(partContent);
+      partContent = decodeQuotedPrintable(partContent, partCharset);
     }
     
     if (partContentType.includes('text/plain') && !result.text) {
@@ -387,7 +388,8 @@ function parseEmailFromLines(lines: string[]): Omit<Email, 'id'> | null {
       body = rawBody;
       const encoding = headers['content-transfer-encoding']?.toLowerCase();
       if (encoding === 'quoted-printable') {
-        body = decodeQuotedPrintable(body);
+        const bodyCharset = contentType.match(/charset=["']?([^"';\s]+)["']?/i)?.[1];
+        body = decodeQuotedPrintable(body, bodyCharset);
       } else if (encoding === 'base64') {
         try {
           body = atob(body.replace(/\s/g, ''));

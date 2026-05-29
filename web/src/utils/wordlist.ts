@@ -36,5 +36,5 @@ function buildWordlist(): string[] {
   return words;
 }
 
-// 36 onsets * 5 nuclei * 20 codas = 3600 candidate words (all unique here).
+// 35 onsets * 5 nuclei * 20 codas = 3500 candidate words (all unique here).
 export const WORDLIST: readonly string[] = Object.freeze(buildWordlist());

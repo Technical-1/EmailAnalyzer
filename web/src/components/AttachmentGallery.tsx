@@ -70,6 +70,14 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
     (a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime()
   );
 
+  // Stable, content-based key of the image emails currently visible. Using a
+  // value-comparable string (not just .length) re-runs the prefetch whenever the
+  // image set itself changes, even if a filter swap leaves the count unchanged.
+  const imageEmailKey = filteredAttachments
+    .filter(({ attachment }) => attachmentService.getAttachmentType(attachment.mimeType) === 'image')
+    .map(({ email }) => email.id)
+    .join(',');
+
   // Pre-fetch attachment data for visible image thumbnails in grid view.
   // Only image attachments need their data for thumbnails; others just show an icon.
   useEffect(() => {
@@ -87,8 +95,10 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
     for (const emailId of imageEmailIds) {
       fetchData(emailId);
     }
+    // filteredAttachments/bodyCache/fetchData intentionally excluded to avoid
+    // refetch loops; imageEmailKey precisely captures the relevant changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, filteredAttachments.length, filter]);
+  }, [viewMode, imageEmailKey]);
 
   const filterOptions = [
     { value: 'all', label: 'All' },
@@ -321,12 +331,13 @@ interface GalleryPreviewModalProps {
 }
 
 function GalleryPreviewModal({ att, bodyCache, fetchData, onClose }: GalleryPreviewModalProps) {
-  const [, setTick] = useState(0);
 
   useEffect(() => {
     if (att.email.id === undefined) return;
     if (bodyCache.has(att.email.id)) return;
-    fetchData(att.email.id).then(() => setTick(t => t + 1));
+    // fetchData resolves via setBodyCache in the parent, which re-renders this
+    // modal with the populated cache — no local force-update needed.
+    void fetchData(att.email.id);
   }, [att.email.id, bodyCache, fetchData]);
 
   const attData = att.email.id !== undefined ? bodyCache.get(att.email.id) : undefined;
