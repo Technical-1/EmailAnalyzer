@@ -3,6 +3,9 @@
  * Provides AES-GCM encryption for local data security
  */
 
+import { uint8ArrayToBase64, base64ToUint8Array } from '../utils/base64';
+import { WORDLIST } from '../utils/wordlist';
+
 const ENCRYPTION_ALGORITHM = 'AES-GCM';
 const KEY_LENGTH = 256;
 const SALT_LENGTH = 16;
@@ -264,40 +267,46 @@ class EncryptionService {
   }
 
   /**
-   * Helper: Convert Uint8Array to Base64
+   * Helper: Convert Uint8Array to Base64 (chunked; safe for large blobs)
    */
   private arrayToBase64(array: Uint8Array): string {
-    return btoa(String.fromCharCode(...array));
+    return uint8ArrayToBase64(array);
   }
 
   /**
    * Helper: Convert Base64 to Uint8Array
    */
   private base64ToArray(base64: string): Uint8Array {
-    return new Uint8Array(atob(base64).split('').map(c => c.charCodeAt(0)));
+    return base64ToUint8Array(base64);
   }
 
   /**
-   * Generate a strong passphrase
+   * Return an unbiased random integer in [0, max) using rejection sampling
+   * over crypto.getRandomValues. Avoids the modulo bias of (rand % max).
    */
-  generatePassphrase(wordCount: number = 4): string {
-    const words = [
-      'apple', 'banana', 'cherry', 'dragon', 'eagle', 'forest',
-      'garden', 'harbor', 'island', 'jungle', 'kernel', 'lemon',
-      'mountain', 'nebula', 'ocean', 'planet', 'quartz', 'river',
-      'sunset', 'thunder', 'urban', 'valley', 'winter', 'xenon',
-      'yellow', 'zenith', 'anchor', 'beacon', 'castle', 'diamond',
-    ];
+  private randomIndex(max: number): number {
+    // Largest multiple of `max` that fits in a Uint32, used as the rejection
+    // threshold. Any draw at or above this is discarded and retried.
+    const limit = Math.floor(0xffffffff / max) * max;
+    const buf = new Uint32Array(1);
+    let value: number;
+    do {
+      crypto.getRandomValues(buf);
+      value = buf[0];
+    } while (value >= limit);
+    return value % max;
+  }
 
-    const randomWords: string[] = [];
-    const array = new Uint32Array(wordCount);
-    crypto.getRandomValues(array);
-
+  /**
+   * Generate a strong passphrase from the bundled wordlist.
+   * Default of 6 words from a 1024+ word list yields >= ~60 bits of entropy.
+   */
+  generatePassphrase(wordCount: number = 6): string {
+    const words: string[] = [];
     for (let i = 0; i < wordCount; i++) {
-      randomWords.push(words[array[i] % words.length]);
+      words.push(WORDLIST[this.randomIndex(WORDLIST.length)]);
     }
-
-    return randomWords.join('-');
+    return words.join('-');
   }
 }
 

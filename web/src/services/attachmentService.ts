@@ -1,5 +1,6 @@
 import type { Attachment } from '../types';
 import { logger } from '../utils/logger';
+import { base64ToUint8Array } from '../utils/base64';
 
 /**
  * Service for handling email attachments
@@ -55,13 +56,8 @@ class AttachmentService {
    * Create a blob from base64 data
    */
   createBlob(data: string, mimeType: string): Blob {
-    const byteCharacters = atob(data);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-      byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: mimeType });
+    const byteArray = base64ToUint8Array(data);
+    return new Blob([byteArray.buffer as ArrayBuffer], { type: mimeType });
   }
 
   /**
