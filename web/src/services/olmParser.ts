@@ -22,6 +22,7 @@ import { purchaseDetector } from './purchaseDetector';
 import { subscriptionDetector } from './subscriptionDetector';
 import { newsletterDetector } from './newsletterDetector';
 import { cleanEmailAddress, extractDomain, normalizeSubject } from '../utils/emailUtils';
+import { MAX_COMPRESSED_BYTES, MAX_DECOMPRESSED_BYTES, MAX_SUBJECT_LEN, MAX_BODY_LEN, MAX_EMAIL_LEN } from './mimeUtils';
 
 export type ProgressCallback = (progress: OLMProcessingProgress) => void;
 
@@ -46,8 +47,7 @@ class OLMParser {
       });
 
       // Validate file size before loading (500MB compressed limit)
-      const MAX_COMPRESSED_SIZE = 500 * 1024 * 1024;
-      if (file.size > MAX_COMPRESSED_SIZE) {
+      if (file.size > MAX_COMPRESSED_BYTES) {
         throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
       }
 
@@ -55,7 +55,6 @@ class OLMParser {
 
       // Check decompressed size to guard against zip bombs (2GB limit)
       // JSZip stores uncompressedSize in internal _data property (not in public types)
-      const MAX_DECOMPRESSED_SIZE = 2 * 1024 * 1024 * 1024;
       let totalDecompressedSize = 0;
       for (const entry of Object.values(zip.files)) {
         if (!entry.dir) {
@@ -65,7 +64,7 @@ class OLMParser {
           }
         }
       }
-      if (totalDecompressedSize > MAX_DECOMPRESSED_SIZE) {
+      if (totalDecompressedSize > MAX_DECOMPRESSED_BYTES) {
         throw new Error(`Archive decompressed size exceeds 2GB limit. This may be a malicious file.`);
       }
 
@@ -315,10 +314,6 @@ class OLMParser {
       }
 
       // Sanitize field lengths to prevent memory issues
-      const MAX_SUBJECT_LEN = 1000;
-      const MAX_BODY_LEN = 10 * 1024 * 1024; // 10MB
-      const MAX_EMAIL_LEN = 254; // RFC 5321
-
       const rawSubject = subject || '(No Subject)';
       const rawBody = body || preview || '';
       const sanitizedSender = cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN);

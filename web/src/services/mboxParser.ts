@@ -1,6 +1,7 @@
 import type { Email } from '../types';
 import { cleanEmailAddress, normalizeSubject } from '../utils/emailUtils';
 import { logger } from '../utils/logger';
+import { decodeQuotedPrintable, decodeRfc2047 } from './mimeUtils';
 
 /**
  * Callback for streaming email processing
@@ -608,28 +609,11 @@ class MBOXParser {
   }
 
   private decodeQuotedPrintable(str: string): string {
-    return str
-      .replace(/=\r?\n/g, '')
-      .replace(/=([0-9A-F]{2})/gi, (_, hex) => 
-        String.fromCharCode(parseInt(hex, 16))
-      );
+    return decodeQuotedPrintable(str);
   }
 
   private decodeHeaderValue(str: string): string {
-    return str.replace(
-      /=\?([^?]+)\?([BQ])\?([^?]+)\?=/gi,
-      (_, _charset, encoding, text) => {
-        try {
-          if (encoding.toUpperCase() === 'B') {
-            return atob(text);
-          } else {
-            return this.decodeQuotedPrintable(text.replace(/_/g, ' '));
-          }
-        } catch {
-          return text;
-        }
-      }
-    );
+    return decodeRfc2047(str);
   }
 
   isMBOXFile(file: File): boolean {
