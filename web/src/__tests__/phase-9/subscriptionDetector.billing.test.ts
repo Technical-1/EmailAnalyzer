@@ -58,4 +58,16 @@ describe('SubscriptionDetector billing context (issue 10)', () => {
     );
     expect(result.frequency).toBeUndefined();
   });
+
+  it('picks the billing-anchored price when a non-billing price appears first', () => {
+    // The old first-match extractAmount would return 5.00 (first $ in body).
+    // The fixed billing-anchored extractAmount skips $5.00 (no billing keyword
+    // in its ±40-char window) and returns 12.99 (adjacent to "charged").
+    const result = subscriptionDetector.detectSubscription(
+      email({
+        body: 'Limited-time offer: $5.00 off your next order! Your subscription will be charged $12.99 per month starting today.',
+      }),
+    );
+    expect(result.amount).toBe(12.99);
+  });
 });
