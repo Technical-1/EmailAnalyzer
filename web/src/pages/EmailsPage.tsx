@@ -165,7 +165,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         thread.participants.some(p => p.toLowerCase().includes(query)) ||
         thread.emails.some(e =>
           e.sender.toLowerCase().includes(query) ||
-          e.body.toLowerCase().includes(query)
+          (e.searchText ?? '').toLowerCase().includes(query)
         )
       );
     }
