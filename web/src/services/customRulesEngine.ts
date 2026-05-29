@@ -154,7 +154,13 @@ class CustomRulesEngine {
         try {
           const flags = condition.caseSensitive ? '' : 'i';
           const regex = new RegExp(condition.value, flags);
-          return regex.test(fieldValue);
+          // Bound input length to avoid catastrophic backtracking freezing the tab.
+          const MAX_REGEX_INPUT = 4096;
+          const boundedValue =
+            fieldValue.length > MAX_REGEX_INPUT
+              ? fieldValue.slice(0, MAX_REGEX_INPUT)
+              : fieldValue;
+          return regex.test(boundedValue);
         } catch {
           return false;
         }
