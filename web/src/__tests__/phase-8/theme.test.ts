@@ -104,6 +104,30 @@ describe('useTheme Hook', () => {
     expect(result.current.resolvedTheme).toBe('light');
   });
 
+  it('should cycle light -> dark -> system -> light', () => {
+    const { result } = renderHook(() => useTheme());
+
+    act(() => {
+      result.current.setTheme('light');
+    });
+    expect(result.current.theme).toBe('light');
+
+    act(() => {
+      result.current.cycleTheme();
+    });
+    expect(result.current.theme).toBe('dark');
+
+    act(() => {
+      result.current.cycleTheme();
+    });
+    expect(result.current.theme).toBe('system');
+
+    act(() => {
+      result.current.cycleTheme();
+    });
+    expect(result.current.theme).toBe('light');
+  });
+
   it('should apply dark class to document when dark theme', () => {
     const { result } = renderHook(() => useTheme());
     

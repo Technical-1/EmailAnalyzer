@@ -11,20 +11,24 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
   variant = 'icon',
   className = '' 
 }) => {
-  const { theme, resolvedTheme, setTheme, toggleTheme } = useTheme();
+  const { theme, setTheme, cycleTheme } = useTheme();
 
   if (variant === 'icon') {
+    const label =
+      theme === 'light' ? 'Light' : theme === 'dark' ? 'Dark' : 'System';
     return (
       <button
-        onClick={toggleTheme}
+        onClick={cycleTheme}
         className={`p-2 rounded-lg transition-colors hover:bg-slate-200 dark:hover:bg-slate-700 ${className}`}
-        aria-label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
-        title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} mode`}
+        aria-label={`Theme: ${label}. Click to change theme`}
+        title={`Theme: ${label}`}
       >
-        {resolvedTheme === 'dark' ? (
+        {theme === 'dark' ? (
+          <Moon className="w-5 h-5 text-indigo-400" />
+        ) : theme === 'light' ? (
           <Sun className="w-5 h-5 text-amber-400" />
         ) : (
-          <Moon className="w-5 h-5 text-slate-600" />
+          <Monitor className="w-5 h-5 text-slate-500 dark:text-slate-400" />
         )}
       </button>
     );

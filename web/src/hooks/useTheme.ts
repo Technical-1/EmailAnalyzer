@@ -7,7 +7,10 @@ interface UseThemeReturn {
   resolvedTheme: 'light' | 'dark';
   setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
+  cycleTheme: () => void;
 }
+
+const THEME_CYCLE: Theme[] = ['light', 'dark', 'system'];
 
 const THEME_STORAGE_KEY = 'email-analyzer-theme';
 
@@ -62,6 +65,12 @@ export function useTheme(): UseThemeReturn {
     setTheme(resolvedTheme === 'dark' ? 'light' : 'dark');
   }, [theme, systemTheme, setTheme]);
 
+  const cycleTheme = useCallback(() => {
+    const currentIndex = THEME_CYCLE.indexOf(theme);
+    const nextIndex = (currentIndex + 1) % THEME_CYCLE.length;
+    setTheme(THEME_CYCLE[nextIndex]);
+  }, [theme, setTheme]);
+
   const resolvedTheme = theme === 'system' ? systemTheme : theme;
 
   return {
@@ -69,6 +78,7 @@ export function useTheme(): UseThemeReturn {
     resolvedTheme,
     setTheme,
     toggleTheme,
+    cycleTheme,
   };
 }
 
