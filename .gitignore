@@ -49,6 +49,10 @@ coverage/
 # Local files
 *.local
 
+# Local tooling / agent workspace (not for public repo)
+.claude/
+.project-hub-tasks.json
+
 # Package locks (keep package-lock.json, ignore others)
 yarn.lock
 pnpm-lock.yaml

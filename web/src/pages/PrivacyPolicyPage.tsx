@@ -180,7 +180,7 @@ export function PrivacyPolicyPage() {
           <p>
             Questions about privacy? This project is open source on{' '}
             <a
-              href="https://github.com/jacobkanfer/EmailAnalyzer"
+              href="https://github.com/Technical-1/EmailAnalyzer"
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-500 hover:text-blue-600 underline"
