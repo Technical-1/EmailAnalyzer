@@ -8,7 +8,6 @@ import {
 import { FileDropzone } from '../components/FileDropzone';
 import { ProgressBar } from '../components/ProgressBar';
 import { StatsCard } from '../components/StatsCard';
-import { gmailTakeoutParser } from '../services/gmailTakeoutParser';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import type { OLMProcessingProgress, OLMProcessingResult } from '../types';
@@ -232,10 +231,15 @@ export function HomePage() {
       // Detect file type and route to appropriate handler
       const fileName = file.name.toLowerCase();
       
+      const isGmailTakeout =
+        file.type === 'application/zip' ||
+        fileName.endsWith('.zip') ||
+        fileName.includes('takeout');
+
       if (fileName.endsWith('.olm')) {
         // OLM file - use Web Worker
         processWithWorker(file, 'olm');
-      } else if (gmailTakeoutParser.isGmailTakeout(file)) {
+      } else if (isGmailTakeout) {
         // Gmail Takeout ZIP file - use Web Worker
         processWithWorker(file, 'gmail-takeout');
       } else if (fileName.endsWith('.mbox') || fileName.endsWith('.mbx')) {
