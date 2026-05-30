@@ -6,8 +6,14 @@ import { normalizeSubject, extractDomain } from '../utils/emailUtils';
  */
 class ThreadingService {
   /**
-   * Build threads from a list of emails
-   * Matches by: 1) threadId, 2) Normalized subject, 3) participant overlap
+   * Build threads from a list of emails.
+   *
+   * Grouping key (see getThreadKey): an email is keyed by its explicit
+   * threadId when present, otherwise by its sender domain + normalized
+   * subject. Emails with no usable subject get a unique key so they stay
+   * separate. There is intentionally no participant-overlap merge pass —
+   * the domain scoping keeps generic subjects from collapsing across
+   * unrelated senders without the false-merge risk of overlap heuristics.
    */
   buildThreads(emails: Email[]): EmailThread[] {
     const threadMap = new Map<string, Email[]>();
