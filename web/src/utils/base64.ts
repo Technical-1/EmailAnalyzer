@@ -29,7 +29,7 @@ export function uint8ArrayToBase64(array: Uint8Array): string {
  * Convert a base64 string back to a Uint8Array.
  * Symmetric with uint8ArrayToBase64.
  */
-export function base64ToUint8Array(base64: string): Uint8Array {
+export function base64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const length = binary.length;
   const array = new Uint8Array(length);

@@ -20,7 +20,7 @@ interface EncryptedData {
 
 class EncryptionService {
   private cryptoKey: CryptoKey | null = null;
-  private salt: Uint8Array | null = null;
+  private salt: Uint8Array<ArrayBuffer> | null = null;
 
   /**
    * Check if encryption is available
@@ -34,7 +34,7 @@ class EncryptionService {
   /**
    * Derive encryption key from passphrase using PBKDF2
    */
-  private async deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+  private async deriveKey(passphrase: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey(
       'raw',
@@ -47,7 +47,7 @@ class EncryptionService {
     return crypto.subtle.deriveKey(
       {
         name: 'PBKDF2',
-        salt: salt.buffer as ArrayBuffer,
+        salt,
         iterations: ITERATIONS,
         hash: 'SHA-256',
       },
@@ -167,7 +167,7 @@ class EncryptionService {
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
     
     const ciphertext = await crypto.subtle.encrypt(
-      { name: ENCRYPTION_ALGORITHM, iv: iv.buffer as ArrayBuffer },
+      { name: ENCRYPTION_ALGORITHM, iv },
       this.cryptoKey,
       encoder.encode(data)
     );
@@ -191,9 +191,9 @@ class EncryptionService {
     const iv = this.base64ToArray(encrypted.iv);
 
     const decrypted = await crypto.subtle.decrypt(
-      { name: ENCRYPTION_ALGORITHM, iv: iv.buffer as ArrayBuffer },
+      { name: ENCRYPTION_ALGORITHM, iv },
       this.cryptoKey,
-      ciphertext.buffer as ArrayBuffer
+      ciphertext
     );
 
     const decoder = new TextDecoder();
@@ -276,7 +276,7 @@ class EncryptionService {
   /**
    * Helper: Convert Base64 to Uint8Array
    */
-  private base64ToArray(base64: string): Uint8Array {
+  private base64ToArray(base64: string): Uint8Array<ArrayBuffer> {
     return base64ToUint8Array(base64);
   }
 
