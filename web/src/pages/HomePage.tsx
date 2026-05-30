@@ -17,30 +17,14 @@ import type {
   ParseFileMessage 
 } from '../workers/parserWorker.types';
 import {
-  insertEmail,
-  insertAccount,
-  insertPurchase,
-  findDuplicatePurchase,
   insertContact,
   insertCalendarEvent,
-  getAccountByServiceName,
   getContactByEmail,
-  updateContactEmailCount,
-  insertSubscription,
-  getSubscriptionByServiceName,
-  updateSubscription,
-  insertNewsletter,
-  getNewsletterBySender,
-  updateNewsletter,
   ensureFoldersExist,
 } from '../db/database';
-import { accountDetector } from '../services/accountDetector';
-import { purchaseDetector } from '../services/purchaseDetector';
-import { subscriptionDetector } from '../services/subscriptionDetector';
-import { newsletterDetector } from '../services/newsletterDetector';
-import { extractDomain } from '../utils/emailUtils';
+import { createImportCounts, processEmailBatch as runImportBatch } from '../services/importPipeline';
 import { logger } from '../utils/logger';
-import type { Email, Account, Subscription, Newsletter, Contact, CalendarEvent } from '../types';
+import type { Email, Contact, CalendarEvent } from '../types';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -53,15 +37,7 @@ export function HomePage() {
   // Reference to the worker
   const workerRef = useRef<Worker | null>(null);
   // Track processing result during worker operation
-  const processingResultRef = useRef<OLMProcessingResult>({
-      emails: 0,
-      contacts: 0,
-      calendarEvents: 0,
-      accounts: 0,
-      purchases: 0,
-      subscriptions: 0,
-      newsletters: 0,
-  });
+  const processingResultRef = useRef<OLMProcessingResult>(createImportCounts());
   // Track folder IDs found during import
   const folderIdsRef = useRef<Set<string>>(new Set());
 
@@ -77,178 +53,15 @@ export function HomePage() {
     };
   }, []);
 
-  // Helper function to run detection on an email
-  const runDetection = useCallback(async (email: Email, result: OLMProcessingResult): Promise<void> => {
-    // Detect account signups
-    const accountResult = accountDetector.detectAccountSignup(email);
-    if (accountResult.type === 'account' && accountResult.data?.serviceName) {
-      const existingAccount = await getAccountByServiceName(accountResult.data.serviceName);
-      if (!existingAccount) {
-        const accountData = accountDetector.createAccountFromEmail(
-          email,
-          accountResult.data.serviceName,
-          accountResult.data.serviceType as Account['serviceType']
-        );
-        await insertAccount(accountData);
-        result.accounts++;
-      }
-    }
-
-    // Detect purchases
-    const purchaseResult = purchaseDetector.detectPurchase(email);
-    if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount) {
-      const merchant = purchaseResult.data.merchant || 'Unknown';
-      const amount = purchaseResult.data.amount;
-      const orderNumber = purchaseResult.data.orderNumber;
-      const currency = purchaseResult.data.currency;
-
-      const existingPurchase = await findDuplicatePurchase(
-        merchant,
-        amount,
-        email.date,
-        orderNumber
-      );
-
-      if (!existingPurchase) {
-        const purchaseData = purchaseDetector.createPurchaseFromEmail(
-          email,
-          merchant,
-          amount,
-          orderNumber,
-          currency
-        );
-        await insertPurchase(purchaseData);
-        result.purchases++;
-      }
-    }
-
-    // Detect subscriptions
-    const subResult = subscriptionDetector.detectSubscription(email);
-    if (subResult.isSubscription && subResult.serviceName) {
-      const senderDomain = extractDomain(email.sender);
-      
-      let existingSub = await getSubscriptionByServiceName(subResult.serviceName);
-      if (!existingSub && senderDomain) {
-        existingSub = await getSubscriptionByServiceName(senderDomain);
-      }
-      
-      if (existingSub) {
-        const emailIds = [...new Set([...existingSub.emailIds, email.id!])];
-        const isNewerEmail = email.date > existingSub.lastRenewalDate;
-        const shouldUpdateAmount = isNewerEmail && subResult.amount && subResult.amount > 0;
-        
-        await updateSubscription(existingSub.id!, {
-          emailIds,
-          lastRenewalDate: isNewerEmail ? email.date : existingSub.lastRenewalDate,
-          monthlyAmount: shouldUpdateAmount ? subResult.amount : existingSub.monthlyAmount,
-        });
-      } else {
-        const newSub: Omit<Subscription, 'id'> = {
-          serviceName: subResult.serviceName,
-          monthlyAmount: subResult.amount || 0,
-          currency: subResult.currency || 'USD',
-          frequency: subResult.frequency || 'monthly',
-          lastRenewalDate: email.date,
-          emailIds: [email.id!],
-          isActive: true,
-          category: subResult.category || 'other',
-        };
-        await insertSubscription(newSub);
-        result.subscriptions++;
-      }
-    }
-
-    // Detect newsletters/promotional emails
-    const nlResult = newsletterDetector.detectNewsletter(email);
-    if (nlResult.isNewsletter || nlResult.isPromotional) {
-      const existingNL = await getNewsletterBySender(email.sender);
-      if (existingNL) {
-        await updateNewsletter(existingNL.id!, {
-          emailCount: existingNL.emailCount + 1,
-          lastEmailDate: email.date > existingNL.lastEmailDate ? email.date : existingNL.lastEmailDate,
-          unsubscribeLink: nlResult.unsubscribeLink || existingNL.unsubscribeLink,
-        });
-      } else {
-        const newNL: Omit<Newsletter, 'id'> = {
-          senderEmail: email.sender,
-          senderName: email.senderName || email.sender.split('@')[0],
-          emailCount: 1,
-          lastEmailDate: email.date,
-          unsubscribeLink: nlResult.unsubscribeLink,
-          isPromotional: nlResult.isPromotional,
-        };
-        await insertNewsletter(newNL);
-        result.newsletters++;
-      }
-    }
-  }, []);
-
-  // Helper function to track contacts
-  const trackContact = useCallback(async (email: Omit<Email, 'id'>): Promise<boolean> => {
-    const senderEmail = email.sender;
-    if (!senderEmail || senderEmail === 'unknown@example.com') return false;
-
-    const existingContact = await getContactByEmail(senderEmail);
-    if (existingContact) {
-      await updateContactEmailCount(
-        senderEmail,
-        existingContact.emailCount + 1,
-        email.date
-      );
-      return false;
-    } else {
-      const senderName = email.senderName || senderEmail.split('@')[0] || 'Unknown';
-      await insertContact({
-        name: senderName,
-        email: senderEmail,
-        phone: undefined,
-        emailCount: 1,
-        lastEmailDate: email.date,
-      });
-      return true;
-    }
-  }, []);
-
-  // Process email batch from worker
+  // Process email batch from worker — persist + detect every email via the
+  // shared import pipeline (services/importPipeline.ts).
   const processEmailBatch = useCallback(async (
     emailsData: Omit<Email, 'id'>[],
     result: OLMProcessingResult,
     folderIds: Set<string>
   ) => {
-    for (const emailData of emailsData) {
-      try {
-        // Ensure date is a Date object (JSON serialization may convert to string)
-        const email: Omit<Email, 'id'> = {
-          ...emailData,
-          date: new Date(emailData.date),
-        };
-
-        // Track folder ID
-        if (email.folderId) {
-          folderIds.add(email.folderId);
-        }
-        
-        const emailId = await insertEmail(email);
-        result.emails++;
-        
-        // Run detection on every 5th email to save time on large imports
-        if (result.emails % 5 === 0) {
-          const emailWithId: Email = { ...email, id: emailId };
-          await runDetection(emailWithId, result);
-        }
-        
-        // Track contacts for every 10th email
-        if (result.emails % 10 === 0) {
-          const newContact = await trackContact(email);
-          if (newContact) {
-            result.contacts++;
-          }
-        }
-      } catch (err) {
-        logger.warn('Error processing email:', err);
-      }
-    }
-  }, [runDetection, trackContact]);
+    await runImportBatch(emailsData, result, folderIds);
+  }, []);
 
   // Process contact batch from worker (OLM files)
   const processContactBatch = useCallback(async (
@@ -367,15 +180,7 @@ export function HomePage() {
   // Start worker and process file
   const processWithWorker = useCallback((file: File, fileType: 'olm' | 'mbox' | 'gmail-takeout') => {
     // Reset tracking
-    processingResultRef.current = {
-      emails: 0,
-      contacts: 0,
-      calendarEvents: 0,
-      accounts: 0,
-      purchases: 0,
-      subscriptions: 0,
-      newsletters: 0,
-    };
+    processingResultRef.current = createImportCounts();
     folderIdsRef.current = new Set();
 
     // Create worker

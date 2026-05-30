@@ -605,6 +605,15 @@ export const getSubscriptionByServiceName = async (serviceName: string): Promise
   return dbSubscription ? dbSubscriptionToSubscription(dbSubscription) : undefined;
 };
 
+// Look up a subscription by sender domain (non-indexed scan; subscription
+// counts are tiny). Used to dedupe the same service detected under different
+// extracted names but the same sender domain.
+export const getSubscriptionByDomain = async (domain: string): Promise<Subscription | undefined> => {
+  if (!domain) return undefined;
+  const dbSubscription = await db.subscriptions.filter((s) => s.domain === domain).first();
+  return dbSubscription ? dbSubscriptionToSubscription(dbSubscription) : undefined;
+};
+
 export const updateSubscription = async (
   id: number,
   updates: Partial<Pick<Subscription, 'isActive' | 'emailIds' | 'monthlyAmount' | 'lastRenewalDate'>>

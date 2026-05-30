@@ -162,6 +162,7 @@ export interface SavedSearch {
 export interface Subscription {
   id?: number;
   serviceName: string;
+  domain?: string; // sender domain, used to dedupe the same service across name variants
   monthlyAmount: number;
   currency: string;
   frequency: 'weekly' | 'monthly' | 'yearly';
