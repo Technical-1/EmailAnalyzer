@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { getEmailBody } from '../db/database';
-import { logger } from '../utils/logger';
 
 interface EmailBody {
   body: string;
@@ -64,17 +63,5 @@ export function useLazyEmailBody(emailId: number | undefined): UseLazyEmailBodyR
   }, [emailId]);
 
   return { body, isLoading, error };
-}
-
-/**
- * Prefetch email body in the background
- * Can be used to prefetch when hovering over an email in the list
- */
-export async function prefetchEmailBody(emailId: number): Promise<void> {
-  try {
-    await getEmailBody(emailId);
-  } catch (err) {
-    logger.warn('Failed to prefetch email body:', err);
-  }
 }
 

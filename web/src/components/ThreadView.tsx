@@ -4,13 +4,8 @@ import { ChevronDown, ChevronUp, Mail, MailOpen, Paperclip, Star, Users } from '
 import type { Email, EmailThread } from '../types';
 import { useAppStore } from '../store';
 import { stripHtml } from '../utils/emailUtils';
+import { makeSnippet } from '../services/mimeUtils';
 import { useLazyEmailBody } from '../hooks/useLazyEmailBody';
-
-// TODO(parsing-bucket): replace with makeSnippet from '../services/mimeUtils' once it lands.
-function deriveSnippet(text: string, maxLen = 150): string {
-  const stripped = stripHtml(text || '');
-  return stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped;
-}
 
 interface ThreadViewProps {
   thread: EmailThread;
@@ -75,7 +70,7 @@ export function ThreadView({ thread, onEmailClick, initialExpanded = false }: Th
           </div>
 
           <div className="text-sm text-slate-600 dark:text-slate-300 mt-1 line-clamp-2">
-            {latestEmail.snippet ?? deriveSnippet(latestEmail.body ?? '')}{(latestEmail.snippet ?? latestEmail.body) ? '...' : ''}
+            {latestEmail.snippet ?? makeSnippet(latestEmail.body ?? '')}
           </div>
         </div>
 
@@ -129,7 +124,7 @@ interface SingleEmailViewProps {
 
 function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps) {
   const preview = useMemo(
-    () => email.snippet ?? deriveSnippet(email.body ?? '', 100),
+    () => email.snippet ?? makeSnippet(email.body ?? '', 100),
     [email.snippet, email.body]
   );
 
@@ -173,7 +168,7 @@ function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps)
           </div>
 
           <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 truncate">
-            {preview}{preview ? '...' : ''}
+            {preview}
           </div>
         </div>
 
@@ -208,7 +203,7 @@ interface ThreadEmailItemProps {
 function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmailItemProps) {
   const [showFull, setShowFull] = useState(expanded);
   const collapsedPreview = useMemo(
-    () => email.snippet ?? deriveSnippet(email.body ?? '', 100),
+    () => email.snippet ?? makeSnippet(email.body ?? '', 100),
     [email.snippet, email.body]
   );
 
@@ -261,7 +256,7 @@ function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmail
             </div>
           ) : (
             <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
-              {collapsedPreview}{collapsedPreview ? '...' : ''}
+              {collapsedPreview}
             </div>
           )}
         </div>

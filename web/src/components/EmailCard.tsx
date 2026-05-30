@@ -4,13 +4,7 @@ import { Star, Mail, MailOpen, ShoppingBag, UserCheck, Archive, Trash2, Circle }
 import type { Email } from '../types';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
-import { stripHtml } from '../utils/emailUtils';
-
-// TODO(parsing-bucket): replace with makeSnippet from '../services/mimeUtils' once it lands.
-function deriveSnippet(text: string, maxLen = 150): string {
-  const stripped = stripHtml(text || '');
-  return stripped.length > maxLen ? stripped.slice(0, maxLen) : stripped;
-}
+import { makeSnippet } from '../services/mimeUtils';
 
 interface EmailCardProps {
   email: Email;
@@ -21,7 +15,7 @@ export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardPr
   const { toggleEmailStar, toggleEmailRead, archiveEmail, deleteEmail, restoreEmail } = useAppStore();
 
   const preview = useMemo(
-    () => email.snippet ?? deriveSnippet(email.body ?? ''),
+    () => email.snippet ?? makeSnippet(email.body ?? ''),
     [email.snippet, email.body]
   );
 
@@ -141,7 +135,7 @@ export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardPr
           </p>
 
           <p className="text-sm text-slate-400 dark:text-slate-500 mt-2 line-clamp-2">
-            {preview}{preview ? '...' : ''}
+            {preview}
           </p>
 
           {email.emailType !== 'regular' && (
