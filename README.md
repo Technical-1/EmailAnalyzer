@@ -33,7 +33,8 @@ Explore years of archived emails offline. Automatically discover accounts, track
 | 🔒 **100% Private** | All processing happens locally—your data never leaves your device |
 | 🌙 **Dark Mode** | Toggle between light and dark themes |
 | 📱 **Mobile Responsive** | Slide-out sidebar navigation optimized for mobile devices |
-| ⚙️ **Custom Rules** | Create user-defined email filtering rules |
+| ⚙️ **Custom Rules** | Match on sender/subject/body and auto-tag, move, star, or mark emails read — applied on import and re-runnable across the whole archive |
+| 🏷️ **Tags** | Label emails by hand or automatically via rules; tags render as chips in the list and detail views |
 | 💾 **Saved Searches** | Save and reuse frequently used search queries |
 | ⚡ **Performance** | Web Worker parsing, virtual scrolling, lazy loading for large archives |
 
