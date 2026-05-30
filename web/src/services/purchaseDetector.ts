@@ -485,12 +485,12 @@ class PurchaseDetector {
     return 'other';
   }
 
-  createPurchaseFromEmail(email: Email, merchant: string, amount: number, orderNumber?: string): Omit<Purchase, 'id'> {
+  createPurchaseFromEmail(email: Email, merchant: string, amount: number, orderNumber?: string, currency: string = 'USD'): Omit<Purchase, 'id'> {
     return {
       emailId: email.id,
       merchant,
       amount,
-      currency: 'USD',
+      currency,
       purchaseDate: email.date,
       orderNumber,
       items: [],

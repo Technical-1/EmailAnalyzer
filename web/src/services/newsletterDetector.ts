@@ -1,5 +1,6 @@
 import type { Email, Newsletter } from '../types';
 import { stripHtml, extractDomain } from '../utils/emailUtils';
+import { isDomainMatch } from './domainMatch';
 
 /**
  * Detector for newsletters and promotional emails
@@ -124,13 +125,9 @@ class NewsletterDetector {
 
     // Check sender domain
     const domain = extractDomain(sender);
-    const promotionalPrefixes = Array.from(this.knownPromotionalDomains);
-    for (const prefix of promotionalPrefixes) {
-      if (domain.includes(prefix)) {
-        newsletterScore += 20;
-        promotionalScore += 20;
-        break;
-      }
+    if (this.isPromotionalSenderDomain(domain)) {
+      newsletterScore += 20;
+      promotionalScore += 20;
     }
 
     // Extract unsubscribe link
@@ -155,6 +152,28 @@ class NewsletterDetector {
       confidence: Math.min(confidence, 100),
       unsubscribeLink,
     };
+  }
+
+  /**
+   * Decide whether a sender domain looks like a marketing/newsletter sender.
+   * Entries in knownPromotionalDomains ending in '.' are subdomain markers
+   * (e.g. 'newsletter.') matched only at the START of the domain so they sit on
+   * a label boundary; the rest are full domains matched boundary-safely. This
+   * avoids the old `domain.includes('mail.')` bug that flagged gmail.com/
+   * hotmail.com as promotional because they contain the substring "mail.".
+   */
+  private isPromotionalSenderDomain(domain: string): boolean {
+    const d = domain.trim().toLowerCase();
+    if (!d) return false;
+
+    for (const entry of this.knownPromotionalDomains) {
+      if (entry.endsWith('.')) {
+        if (d.startsWith(entry)) return true;
+      } else if (isDomainMatch(d, entry)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**

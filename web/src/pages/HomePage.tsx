@@ -100,20 +100,22 @@ export function HomePage() {
       const merchant = purchaseResult.data.merchant || 'Unknown';
       const amount = purchaseResult.data.amount;
       const orderNumber = purchaseResult.data.orderNumber;
-      
+      const currency = purchaseResult.data.currency;
+
       const existingPurchase = await findDuplicatePurchase(
         merchant,
         amount,
         email.date,
         orderNumber
       );
-      
+
       if (!existingPurchase) {
         const purchaseData = purchaseDetector.createPurchaseFromEmail(
           email,
           merchant,
           amount,
-          orderNumber
+          orderNumber,
+          currency
         );
         await insertPurchase(purchaseData);
         result.purchases++;
