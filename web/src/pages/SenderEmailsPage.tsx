@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { useAppStore } from '../store';
+import { getSearchTextForIds } from '../db/database';
 import { SYSTEM_FOLDERS } from '../types';
 
 type ReadFilter = 'all' | 'unread' | 'read';
@@ -62,10 +63,22 @@ export function SenderEmailsPage() {
 
   // Filter emails by sender
   const senderEmails = useMemo(() => {
-    return emails.filter(email => 
+    return emails.filter(email =>
       email.sender.toLowerCase().includes(decodedSenderKey.toLowerCase())
     );
   }, [emails, decodedSenderKey]);
+
+  // searchText isn't held in the store; load it just for this sender's emails
+  // (a small, scoped set) so body search and snippet fallback keep working.
+  const [searchTextMap, setSearchTextMap] = useState<Map<number, string>>(new Map());
+  useEffect(() => {
+    const ids = senderEmails.map(e => e.id).filter((id): id is number => id !== undefined);
+    let cancelled = false;
+    // getSearchTextForIds([]) resolves to an empty Map, so the no-ids case is
+    // handled in the callback without a synchronous setState in the effect body.
+    getSearchTextForIds(ids).then(map => { if (!cancelled) setSearchTextMap(map); });
+    return () => { cancelled = true; };
+  }, [senderEmails]);
 
   // Apply all filters
   const filteredEmails = useMemo(() => {
@@ -94,12 +107,12 @@ export function SenderEmailsPage() {
       result = result.filter(e => e.emailType === 'purchase');
     }
 
-    // Search filter — uses searchText (bounded ~2KB stripped body on header rows)
+    // Search filter — subject in-memory; body via the scoped searchText map.
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(email =>
         email.subject.toLowerCase().includes(query) ||
-        (email.searchText ?? '').toLowerCase().includes(query)
+        (email.id !== undefined && (searchTextMap.get(email.id) ?? '').toLowerCase().includes(query))
       );
     }
 
@@ -107,7 +120,7 @@ export function SenderEmailsPage() {
     result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return result;
-  }, [senderEmails, readFilter, folderFilter, typeFilter, searchQuery]);
+  }, [senderEmails, readFilter, folderFilter, typeFilter, searchQuery, searchTextMap]);
 
   // Pagination
   const totalPages = Math.ceil(filteredEmails.length / EMAILS_PER_PAGE);
@@ -340,7 +353,7 @@ export function SenderEmailsPage() {
                       {email.subject || '(No Subject)'}
                     </p>
                     <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                      {email.snippet ?? (email.searchText ?? '').substring(0, 100)}
+                      {email.snippet ?? (email.id !== undefined ? (searchTextMap.get(email.id) ?? '') : '').substring(0, 100)}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">

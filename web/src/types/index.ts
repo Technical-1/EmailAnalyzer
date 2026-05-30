@@ -22,6 +22,7 @@ export interface Email {
   detectedAccount?: string;
   purchaseAmount?: number;
   purchaseMerchant?: string;
+  tags?: string[]; // user/rule-applied labels (Bucket D header field, indexed via *tags)
 }
 
 export interface Attachment {

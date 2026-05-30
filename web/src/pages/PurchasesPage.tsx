@@ -4,7 +4,11 @@ import { format } from 'date-fns';
 import { ShoppingBag, TrendingUp } from 'lucide-react';
 import { EmptyState } from '../components/EmptyState';
 import { StatsCard } from '../components/StatsCard';
+import { Pagination } from '../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
 import { useAppStore } from '../store';
+
+const PURCHASES_PER_PAGE = 50;
 
 const categoryIcons: Record<string, string> = {
   ecommerce: '🛒',
@@ -54,6 +58,9 @@ export function PurchasesPage() {
     return { totalAmount: total, avgAmount: avg };
   }, [filteredPurchases]);
 
+  const { currentPage, setCurrentPage, totalPages, pageItems, rangeStart, rangeEnd, totalItems } =
+    usePagination(filteredPurchases, PURCHASES_PER_PAGE);
+
   return (
     <div>
       <div className="mb-6">
@@ -98,7 +105,7 @@ export function PurchasesPage() {
             <div className="flex flex-wrap gap-3">
               {/* All option */}
               <button
-                onClick={() => setSelectedCategory(null)}
+                onClick={() => { setSelectedCategory(null); setCurrentPage(1); }}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                   selectedCategory === null
                     ? 'bg-blue-500 text-white'
@@ -117,7 +124,7 @@ export function PurchasesPage() {
                 .map(([category, data]) => (
                 <button
                   key={category}
-                  onClick={() => setSelectedCategory(selectedCategory === category ? null : category)}
+                  onClick={() => { setSelectedCategory(selectedCategory === category ? null : category); setCurrentPage(1); }}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
                     selectedCategory === category
                       ? 'bg-blue-500 text-white'
@@ -157,7 +164,7 @@ export function PurchasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-                {filteredPurchases.slice(0, 100).map(purchase => (
+                {pageItems.map(purchase => (
                   <tr
                     key={purchase.id}
                     onClick={() => purchase.emailId && navigate(`/emails/${purchase.emailId}`)}
@@ -191,12 +198,18 @@ export function PurchasesPage() {
                 ))}
               </tbody>
             </table>
-            {filteredPurchases.length > 100 && (
-              <div className="p-4 text-center text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
-                Showing 100 of {filteredPurchases.length} purchases
-              </div>
-            )}
           </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            totalItems={totalItems}
+            onPageChange={setCurrentPage}
+            itemLabel="purchases"
+            ariaLabel="Purchases pagination"
+          />
         </>
       ) : (
         <EmptyState

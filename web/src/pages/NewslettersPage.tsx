@@ -9,6 +9,10 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { EmptyState } from '../components/EmptyState';
+import { Pagination } from '../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
+
+const NEWSLETTERS_PER_PAGE = 25;
 
 export function NewslettersPage() {
   const { newsletters, emails } = useAppStore();
@@ -38,6 +42,9 @@ export function NewslettersPage() {
       totalEmails: newsletters.reduce((sum, n) => sum + n.emailCount, 0),
     };
   }, [newsletters]);
+
+  const { currentPage, setCurrentPage, totalPages, pageItems, rangeStart, rangeEnd, totalItems } =
+    usePagination(filteredNewsletters, NEWSLETTERS_PER_PAGE);
 
   if (emails.length === 0) {
     return (
@@ -159,8 +166,9 @@ export function NewslettersPage() {
 
       {/* Newsletter List */}
       {filteredNewsletters.length > 0 ? (
+        <>
         <div className="space-y-3">
-          {filteredNewsletters.map((nl) => (
+          {pageItems.map((nl) => (
             <div
               key={nl.id}
               className="bg-white dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700 flex items-center gap-4"
@@ -209,6 +217,17 @@ export function NewslettersPage() {
             </div>
           ))}
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          totalItems={totalItems}
+          onPageChange={setCurrentPage}
+          itemLabel="senders"
+          ariaLabel="Newsletters pagination"
+        />
+        </>
       ) : (
         <EmptyState
           icon={Newspaper}

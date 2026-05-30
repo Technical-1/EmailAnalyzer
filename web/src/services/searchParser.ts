@@ -239,17 +239,31 @@ function parseDateValue(value: string): { date?: Date; year?: number; month?: nu
 }
 
 /**
+ * Pre-computed sets of email ids whose body (searchText) matches a needle.
+ * Supplied by callers that resolve body matches from IndexedDB instead of from
+ * an in-memory searchText field. When omitted, body matching falls back to the
+ * email's own searchText/body fields (used by tests and any caller still holding
+ * full rows).
+ */
+export interface BodyMatchSets {
+  freeText?: Set<number>;
+  body?: Set<number>;
+}
+
+/**
  * Apply parsed search filters to an email list
  */
-export function filterEmails(emails: Email[], search: ParsedSearch): Email[] {
+export function filterEmails(emails: Email[], search: ParsedSearch, bodyMatch?: BodyMatchSets): Email[] {
   return emails.filter((email) => {
     // Free text search (subject, sender, body)
     if (search.freeText) {
       const searchText = search.freeText.toLowerCase();
       const matchesSubject = email.subject.toLowerCase().includes(searchText);
       const matchesSender = email.sender.toLowerCase().includes(searchText);
-      const matchesBody = (email.searchText ?? email.body ?? '').toLowerCase().includes(searchText);
-      
+      const matchesBody = bodyMatch?.freeText
+        ? (email.id !== undefined && bodyMatch.freeText.has(email.id))
+        : (email.searchText ?? email.body ?? '').toLowerCase().includes(searchText);
+
       if (!matchesSubject && !matchesSender && !matchesBody) {
         return false;
       }
@@ -281,7 +295,10 @@ export function filterEmails(emails: Email[], search: ParsedSearch): Email[] {
 
     // Body filter
     if (search.body) {
-      if (!(email.searchText ?? email.body ?? '').toLowerCase().includes(search.body)) {
+      const matchesBody = bodyMatch?.body
+        ? (email.id !== undefined && bodyMatch.body.has(email.id))
+        : (email.searchText ?? email.body ?? '').toLowerCase().includes(search.body);
+      if (!matchesBody) {
         return false;
       }
     }

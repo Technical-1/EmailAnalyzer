@@ -22,6 +22,8 @@ const SubscriptionsPage = lazy(() => import('./pages/SubscriptionsPage').then(m 
 const NewslettersPage = lazy(() => import('./pages/NewslettersPage').then(m => ({ default: m.NewslettersPage })));
 const AttachmentsPage = lazy(() => import('./pages/AttachmentsPage').then(m => ({ default: m.AttachmentsPage })));
 const BackupPage = lazy(() => import('./pages/BackupPage').then(m => ({ default: m.BackupPage })));
+const SavedSearchesPage = lazy(() => import('./pages/SavedSearchesPage').then(m => ({ default: m.SavedSearchesPage })));
+const CustomRulesPage = lazy(() => import('./pages/CustomRulesPage').then(m => ({ default: m.CustomRulesPage })));
 const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage').then(m => ({ default: m.PrivacyPolicyPage })));
 
 function RouteLoadingFallback() {
@@ -84,6 +86,8 @@ function AppContent() {
           <Route path="analytics" element={<AnalyticsPage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="newsletters" element={<NewslettersPage />} />
+          <Route path="saved-searches" element={<SavedSearchesPage />} />
+          <Route path="rules" element={<CustomRulesPage />} />
           <Route path="attachments" element={<AttachmentsPage />} />
           <Route path="backup" element={<BackupPage />} />
           <Route path="settings" element={<SettingsPage />} />

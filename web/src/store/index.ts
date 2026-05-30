@@ -15,6 +15,11 @@ import {
   updateEmailStar,
   updateEmailRead,
   updateEmailFolder,
+  updateEmailTags as updateEmailTagsDB,
+  bulkUpdateEmailFields,
+  type EmailFieldPatch,
+  getAllSearchText,
+  ensureFoldersExist,
   deleteEmail as deleteEmailDB,
   deleteEmails as deleteEmailsDB,
   createFolder as createFolderDB,
@@ -28,6 +33,8 @@ import {
   type ExportData,
 } from '../db/database';
 import { threadingService } from '../services/threadingService';
+import { customRulesEngine } from '../services/customRulesEngine';
+import type { RuleAction } from '../types';
 import { useToastStore } from '../components/Toast';
 
 // Build a Map of email ID -> array index for O(1) lookups
@@ -102,6 +109,8 @@ interface AppState {
   archiveEmail: (id: number) => Promise<void>;
   archiveEmails: (ids: number[]) => Promise<void>;
   moveEmailToFolder: (id: number, folderId: string) => Promise<void>;
+  setEmailTags: (id: number, tags: string[]) => Promise<void>;
+  applyRulesToAll: () => Promise<number>;
   restoreEmail: (id: number) => Promise<void>;
   permanentlyDeleteEmail: (id: number) => Promise<void>;
   emptyTrash: () => Promise<void>;
@@ -478,6 +487,84 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
   
+  // Set the full tag list on an email (manual edits from the detail view)
+  setEmailTags: async (id: number, tags: string[]) => {
+    const idx = get().emailIndex.get(id);
+    if (idx === undefined) return;
+    try {
+      await updateEmailTagsDB(id, tags);
+      const next = applyInPlace(get().emails, get().emailIndex, id, { tags });
+      if (next) set(next);
+    } catch (error) {
+      logger.error('Failed to update tags:', error);
+      useToastStore.getState().showError('Failed to update tags.');
+    }
+  },
+
+  // Apply all active custom rules to every email currently in the store.
+  // Body conditions are evaluated against searchText (the bounded ~2KB stripped
+  // body kept on header rows) since full bodies are not loaded in memory.
+  // Returns the number of emails actually changed.
+  applyRulesToAll: async () => {
+    const rules = customRulesEngine.getActiveRules();
+    if (rules.length === 0) {
+      useToastStore.getState().showError('No active rules to apply.');
+      return 0;
+    }
+
+    // Make sure any folder a "move" action targets exists before we route mail to it.
+    const moveTargets = [
+      ...new Set(
+        rules.flatMap(r => r.actions.filter(a => a.type === 'move' && a.value).map(a => a.value as string))
+      ),
+    ];
+
+    // Body conditions need searchText, which is no longer kept in the store.
+    // Load it from the DB once — but only if a rule actually inspects the body.
+    const needsBody = rules.some(r => r.conditions.some(c => c.field === 'body'));
+    const searchTextMap = needsBody ? await getAllSearchText() : null;
+
+    const { emails, emailIndex } = get();
+    const next = emails.slice();
+    const updates: { id: number; changes: EmailFieldPatch }[] = [];
+
+    for (let i = 0; i < next.length; i++) {
+      const header = next[i];
+      // searchText stands in for body (same bounded basis as list search).
+      const bodyText = header.body || (searchTextMap?.get(header.id!) ?? '');
+      const evalEmail = { ...header, body: bodyText } as Email;
+
+      const actions: RuleAction[] = [];
+      for (const rule of rules) {
+        if (customRulesEngine.matchesRule(evalEmail, rule)) {
+          actions.push(...rule.actions);
+        }
+      }
+
+      const patch = customRulesEngine.applyActionsToEmail(header, actions);
+      if (!patch) continue;
+
+      next[i] = { ...header, ...patch };
+      updates.push({ id: header.id!, changes: patch });
+    }
+
+    const matchedCount = updates.length;
+
+    try {
+      if (moveTargets.length > 0) await ensureFoldersExist(moveTargets);
+      // One atomic bulk write rather than a write per field per email.
+      await bulkUpdateEmailFields(updates);
+    } catch (error) {
+      logger.error('Failed to apply rules:', error);
+      useToastStore.getState().showError('Failed to apply rules.');
+      return 0;
+    }
+
+    set({ emails: next, emailIndex }); // membership preserved -> reuse the index Map
+    if (moveTargets.length > 0) await get().refreshFolders();
+    return matchedCount;
+  },
+
   // Restore email from trash to inbox
   restoreEmail: async (id: number) => {
     const idx = get().emailIndex.get(id);

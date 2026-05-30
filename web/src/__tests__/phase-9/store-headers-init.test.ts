@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { bulkInsertEmails, clearAllData } from '../../db/database';
+import { bulkInsertEmails, clearAllData, searchEmailIdsByText } from '../../db/database';
 import { useAppStore } from '../../store';
 import type { Email } from '../../types';
 
@@ -31,14 +31,17 @@ describe('store init loads headers only', () => {
     expect(useAppStore.getState().threads.length).toBeGreaterThan(0);
   });
 
-  it('searchText is present on header rows (from Step 9)', async () => {
+  it('keeps searchText OUT of the store; body search is served from the DB', async () => {
     await bulkInsertEmails([mk({ subject: 'search-test', body: 'unique-word-xyz in body content' })]);
     await useAppStore.getState().initialize();
     const emails = useAppStore.getState().emails;
     expect(emails).toHaveLength(1);
     const email = emails[0] as unknown as Record<string, unknown>;
-    // searchText should contain the body text (or at least not be undefined)
-    expect(email.searchText).toBeDefined();
-    expect(String(email.searchText)).toContain('unique-word-xyz');
+    // searchText is intentionally NOT loaded into the store (kept in the DB only)
+    // so the in-memory footprint stays small for large archives.
+    expect(email.searchText).toBeUndefined();
+    // Body search resolves matching ids straight from IndexedDB.
+    const ids = await searchEmailIdsByText('unique-word-xyz');
+    expect(ids.has(emails[0].id as number)).toBe(true);
   });
 });

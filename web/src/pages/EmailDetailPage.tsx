@@ -1,8 +1,8 @@
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { format } from 'date-fns';
 import DOMPurify from 'dompurify';
-import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck } from 'lucide-react';
+import { ArrowLeft, Star, Mail, MailOpen, ShoppingBag, UserCheck, Paperclip, Archive, Trash2, RotateCcw, MailCheck, Tag, X } from 'lucide-react';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS } from '../types';
 import { useLazyEmailBody } from '../hooks/useLazyEmailBody';
@@ -21,6 +21,7 @@ export function EmailDetailPage() {
     deleteEmail,
     restoreEmail,
     permanentlyDeleteEmail,
+    setEmailTags,
   } = useAppStore();
   
   // Get return URL from navigation state (preserves view mode)
@@ -36,6 +37,25 @@ export function EmailDetailPage() {
   // Lazy-load body/htmlBody/attachmentData from the emailBodies table
   // (store rows carry only header data after the v5 split)
   const { body: lazyBody } = useLazyEmailBody(email?.id);
+
+  const [tagInput, setTagInput] = useState('');
+
+  const addTag = () => {
+    const tag = tagInput.trim();
+    if (!tag || !email?.id) return;
+    const current = email.tags ?? [];
+    if (current.includes(tag)) {
+      setTagInput('');
+      return;
+    }
+    setEmailTags(email.id, [...current, tag]);
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    if (!email?.id) return;
+    setEmailTags(email.id, (email.tags ?? []).filter((t) => t !== tag));
+  };
 
   // Scroll to top when opening email
   useEffect(() => {
@@ -253,6 +273,40 @@ export function EmailDetailPage() {
               </p>
             </div>
           )}
+
+          {/* Tags */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400 mb-2">
+              <Tag className="w-4 h-4" />
+              <span>Tags</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(email.tags ?? []).map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                >
+                  #{tag}
+                  <button
+                    onClick={() => removeTag(tag)}
+                    aria-label={`Remove tag ${tag}`}
+                    className="hover:text-red-500 transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addTag()}
+                placeholder="Add tag…"
+                aria-label="Add tag"
+                className="px-3 py-1 text-sm border border-slate-200 dark:border-slate-700 rounded-full bg-white dark:bg-slate-900 text-slate-900 dark:text-white w-32"
+              />
+            </div>
+          </div>
 
           {/* Attachments — metadata from header row; base64 data from lazyBody.attachmentData */}
           {email.attachments.length > 0 && (

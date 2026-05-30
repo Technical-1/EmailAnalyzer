@@ -8,7 +8,7 @@
  *  - each batch is written in ONE transaction via bulkInsertEmails
  *  - subscriptions dedupe by sender domain, not a dead serviceName lookup
  */
-import type { Email, Account, Subscription, Newsletter, OLMProcessingResult } from '../types';
+import type { Email, Account, Subscription, Newsletter, CustomRule, RuleAction, OLMProcessingResult } from '../types';
 import {
   bulkInsertEmails,
   insertAccount,
@@ -25,11 +25,16 @@ import {
   insertNewsletter,
   getNewsletterBySender,
   updateNewsletter,
+  updateEmailStar,
+  updateEmailRead,
+  updateEmailFolder,
+  updateEmailTags,
 } from '../db/database';
 import { accountDetector } from './accountDetector';
 import { purchaseDetector } from './purchaseDetector';
 import { subscriptionDetector } from './subscriptionDetector';
 import { newsletterDetector } from './newsletterDetector';
+import { customRulesEngine } from './customRulesEngine';
 import { extractDomain } from '../utils/emailUtils';
 import { logger } from '../utils/logger';
 
@@ -146,6 +151,38 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
   }
 }
 
+/**
+ * Apply active custom rules to a freshly imported email. The email still carries
+ * its full body here, so body conditions evaluate against real content. Any
+ * "move" target folder is added to folderIds so it gets created with the batch.
+ */
+export async function applyRulesToEmail(
+  email: Email,
+  rules: CustomRule[],
+  folderIds: Set<string>,
+): Promise<void> {
+  if (rules.length === 0) return;
+
+  const actions: RuleAction[] = [];
+  for (const rule of rules) {
+    if (customRulesEngine.matchesRule(email, rule)) {
+      actions.push(...rule.actions);
+    }
+  }
+
+  const patch = customRulesEngine.applyActionsToEmail(email, actions);
+  if (!patch) return;
+
+  const id = email.id!;
+  if (patch.folderId !== undefined) {
+    folderIds.add(patch.folderId);
+    await updateEmailFolder(id, patch.folderId);
+  }
+  if (patch.isStarred !== undefined) await updateEmailStar(id, patch.isStarred);
+  if (patch.isRead !== undefined) await updateEmailRead(id, patch.isRead);
+  if (patch.tags !== undefined) await updateEmailTags(id, patch.tags);
+}
+
 /** Track the sender as a contact. Returns true if a new contact was created. */
 export async function trackContact(email: Pick<Email, 'sender' | 'senderName' | 'date'>): Promise<boolean> {
   const senderEmail = email.sender;
@@ -195,12 +232,16 @@ export async function processEmailBatch(
   }
   counts.emails += ids.length;
 
+  // Load active rules once per batch rather than re-reading localStorage per email.
+  const activeRules = customRulesEngine.getActiveRules();
+
   for (let i = 0; i < ids.length; i++) {
     const withId: Email = { ...emails[i], id: ids[i] };
     try {
       await runDetection(withId, counts);
       const isNewContact = await trackContact(withId);
       if (isNewContact) counts.contacts++;
+      await applyRulesToEmail(withId, activeRules, folderIds);
     } catch (err) {
       logger.warn('Error processing email:', err);
     }

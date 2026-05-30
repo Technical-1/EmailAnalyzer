@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, ChevronLeft, ChevronRight, ArrowUpDown, SortAsc, SortDesc, Archive, Trash2, Inbox, Star, Zap, MessageSquare, List, Send, FileText, AlertTriangle, Folder } from 'lucide-react';
 import { SearchInput } from '../components/SearchInput';
 import { AdvancedSearchBuilder } from '../components/AdvancedSearchBuilder';
+import { SavedSearchMenu } from '../components/SavedSearchMenu';
 import { EmailCard } from '../components/EmailCard';
 import { EmptyState } from '../components/EmptyState';
 import { VirtualEmailList } from '../components/VirtualEmailList';
@@ -10,7 +11,8 @@ import { VirtualThreadList } from '../components/VirtualThreadList';
 import { ThreadView } from '../components/ThreadView';
 import { useAppStore } from '../store';
 import { SYSTEM_FOLDERS, type Email } from '../types';
-import { parseSearchQuery, filterEmails } from '../services/searchParser';
+import { parseSearchQuery, filterEmails, type BodyMatchSets } from '../services/searchParser';
+import { searchEmailIdsByText } from '../db/database';
 import { buildThreadsForView } from '../utils/threadFiltering';
 
 type FilterType = 'all' | 'account_signup' | 'purchase' | 'unread' | 'starred';
@@ -28,7 +30,8 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { emails, emptyTrash } = useAppStore();
-  const [searchQuery, setSearchQuery] = useState('');
+  // Seed from a ?q= param so saved searches (and shared links) apply on load.
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get('q') ?? '');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -39,6 +42,33 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     }, 250);
     return () => clearTimeout(debounceTimer.current);
   }, [searchQuery]);
+
+  // Body search is served from IndexedDB (searchText is not held in the store).
+  // Resolve the matching ids for the current query; tag the result with its query
+  // so a stale (previous-query) set is never applied to the wrong results.
+  const [bodyMatch, setBodyMatch] = useState<{ query: string; sets: BodyMatchSets } | null>(null);
+  useEffect(() => {
+    const q = debouncedSearch.trim();
+    const parsed = q ? parseSearchQuery(q) : null;
+    const freeNeedle = parsed?.freeText;
+    const bodyNeedle = parsed?.body;
+    let cancelled = false;
+    // All setState happens in the async callback (no synchronous effect-body
+    // setState); when there's no body needle we resolve to null.
+    Promise.all([
+      freeNeedle ? searchEmailIdsByText(freeNeedle) : Promise.resolve(undefined),
+      bodyNeedle ? searchEmailIdsByText(bodyNeedle) : Promise.resolve(undefined),
+    ]).then(([freeText, body]) => {
+      if (cancelled) return;
+      setBodyMatch(freeNeedle || bodyNeedle ? { query: q, sets: { freeText, body } } : null);
+    });
+    return () => { cancelled = true; };
+  }, [debouncedSearch]);
+
+  const activeBodyMatch = useMemo(
+    () => (bodyMatch && bodyMatch.query === debouncedSearch.trim() ? bodyMatch.sets : undefined),
+    [bodyMatch, debouncedSearch],
+  );
 
   const [filter, setFilter] = useState<FilterType>('all');
   const [sortField, setSortField] = useState<SortField>('date');
@@ -127,7 +157,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     // matches against subject/sender/body — preserving prior behavior.
     // Operator queries (from:, subject:, is:unread, type:, in:, date:, etc.) now work.
     if (debouncedSearch.trim()) {
-      result = filterEmails(result, parseSearchQuery(debouncedSearch));
+      result = filterEmails(result, parseSearchQuery(debouncedSearch), activeBodyMatch);
     }
 
     // Apply sorting
@@ -148,7 +178,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
     });
 
     return result;
-  }, [emails, currentFolder, isFavorites, filter, debouncedSearch, sortField, sortOrder]);
+  }, [emails, currentFolder, isFavorites, filter, debouncedSearch, activeBodyMatch, sortField, sortOrder]);
 
   // Build threads from the CURRENT folder/favorites email set so Threads mode in
   // Trash/Archive/Favorites/custom folders shows only that view's conversations.
@@ -165,13 +195,13 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
         thread.participants.some(p => p.toLowerCase().includes(query)) ||
         thread.emails.some(e =>
           e.sender.toLowerCase().includes(query) ||
-          (e.searchText ?? '').toLowerCase().includes(query)
+          (e.id !== undefined && (activeBodyMatch?.freeText?.has(e.id) ?? false))
         )
       );
     }
 
     return result.sort((a, b) => b.lastMessageDate.getTime() - a.lastMessageDate.getTime());
-  }, [listMode, emails, currentFolder, isFavorites, debouncedSearch]);
+  }, [listMode, emails, currentFolder, isFavorites, debouncedSearch, activeBodyMatch]);
 
   const folderEmailCount = isFavorites 
     ? emails.filter(e => e.isStarred).length 
@@ -282,6 +312,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
           />
         </div>
         <AdvancedSearchBuilder onSearch={handleSearchChange} />
+        <SavedSearchMenu currentQuery={searchQuery} onRun={handleSearchChange} />
       </div>
 
       {/* Filters */}

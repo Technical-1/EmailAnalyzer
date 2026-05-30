@@ -4,7 +4,7 @@ import {
   Mail, Users, ShoppingBag, Calendar, Settings, Upload, UserCheck, Building2,
   Archive, Trash2, Star, BarChart3, RefreshCw, Newspaper, Paperclip, Shield,
   ChevronDown, ChevronRight, Home, Inbox, TrendingUp, Folder, Wrench,
-  Send, FileText, AlertTriangle, Menu, X,
+  Send, FileText, AlertTriangle, Menu, X, Bookmark, Filter,
   type LucideIcon
 } from 'lucide-react';
 import { useAppStore } from '../store';
@@ -74,6 +74,8 @@ const staticSections: NavSection[] = [
     defaultOpen: false,
     items: [
       { to: '/analytics', icon: BarChart3, label: 'Analytics' },
+      { to: '/saved-searches', icon: Bookmark, label: 'Saved Searches' },
+      { to: '/rules', icon: Filter, label: 'Rules' },
       { to: '/backup', icon: Shield, label: 'Backup & Security' },
       { to: '/settings', icon: Settings, label: 'Settings' },
     ],

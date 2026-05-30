@@ -152,6 +152,19 @@ export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardPr
               )}
             </div>
           )}
+
+          {email.tags && email.tags.length > 0 && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              {email.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

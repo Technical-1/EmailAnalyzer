@@ -165,6 +165,21 @@ class EmailAnalyzerDB extends Dexie {
         await emailsTable.update(id, updatePayload);
       }
     });
+
+    // Version 6: add a multiEntry *tags index so emails can carry user/rule labels
+    // and be queried by tag. No data migration needed — existing rows simply have
+    // no tags (multiEntry skips undefined).
+    this.version(6).stores({
+      emails: '++id, sender, date, [folderId+date], [emailType+date], [sender+date], threadId, isRead, isStarred, *tags',
+      accounts: '++id, serviceName, serviceType, domain, signupDate',
+      purchases: '++id, merchant, amount, purchaseDate, category, [merchant+purchaseDate]',
+      contacts: '++id, name, email, emailCount, lastEmailDate',
+      calendarEvents: '++id, title, startDate, endDate, isAllDay, [startDate+endDate]',
+      folders: 'id, name, isSystem, createdAt',
+      subscriptions: '++id, serviceName, category, isActive, lastRenewalDate',
+      newsletters: '++id, senderEmail, isPromotional, lastEmailDate',
+      emailBodies: 'id',
+    });
   }
 }
 
@@ -220,6 +235,22 @@ export const updateEmailStar = async (id: number, isStarred: boolean): Promise<v
 
 export const updateEmailFolder = async (id: number, folderId: string): Promise<void> => {
   await db.emails.update(id, { folderId });
+};
+
+export const updateEmailTags = async (id: number, tags: string[]): Promise<void> => {
+  await db.emails.update(id, { tags });
+};
+
+// Apply per-email field patches in a single atomic transaction. Used by bulk
+// operations (e.g. applying custom rules to the whole archive) so we pay one
+// transaction instead of one per email.
+export type EmailFieldPatch = Partial<Pick<DBEmail, 'isStarred' | 'isRead' | 'folderId' | 'tags'>>;
+
+export const bulkUpdateEmailFields = async (
+  updates: { id: number; changes: EmailFieldPatch }[],
+): Promise<void> => {
+  if (updates.length === 0) return;
+  await db.emails.bulkUpdate(updates.map(({ id, changes }) => ({ key: id, changes })));
 };
 
 export const deleteEmail = async (id: number): Promise<void> => {
@@ -293,16 +324,56 @@ export const getEmailCountByFolder = async (folderId: string): Promise<number> =
 
 // Get email headers only (for lazy loading - body loaded on demand)
 // Post-split: rows physically lack body/htmlBody, so this is genuinely cheap.
-// The defensive strip handles any un-migrated rows that may still carry body.
+// searchText (the bounded ~2KB stripped body) is ALSO dropped here so the
+// in-memory store stays small; body search is served from IndexedDB on demand
+// via searchEmailIdsByText(). We iterate with .each() rather than toArray() so
+// only the slim header objects accumulate — each full row is GC'd as we go,
+// lowering the load-time memory peak too.
 export const getEmailHeaders = async (): Promise<EmailHeader[]> => {
-  const dbEmails = await db.emails.orderBy('date').reverse().toArray();
-  return dbEmails.map(dbEmail => {
+  const headers: EmailHeader[] = [];
+  await db.emails.orderBy('date').reverse().each(dbEmail => {
     const email = dbEmailToEmail(dbEmail);
-    // Defensive: drop body/htmlBody if any un-migrated row still carries them
-    const { body: _b, htmlBody: _h, ...rest } = email;
-    void _b; void _h;
-    return rest as EmailHeader;
+    // Drop body/htmlBody (defensive for un-migrated rows) and searchText (kept in
+    // the DB only, not the store).
+    const { body: _b, htmlBody: _h, searchText: _s, ...rest } = email;
+    void _b; void _h; void _s;
+    headers.push(rest as EmailHeader);
   });
+  return headers;
+};
+
+// Scan the DB for emails whose searchText contains the query, returning their
+// ids. searchText is read transiently per row and never retained in the JS heap.
+export const searchEmailIdsByText = async (query: string): Promise<Set<number>> => {
+  const q = query.trim().toLowerCase();
+  if (!q) return new Set();
+  const ids = await db.emails
+    .filter(e => (e.searchText ?? '').toLowerCase().includes(q))
+    .primaryKeys();
+  return new Set(ids as number[]);
+};
+
+// Fetch searchText for a specific set of email ids (e.g. one sender's emails),
+// so a small, scoped view can search bodies without holding all searchText.
+export const getSearchTextForIds = async (ids: number[]): Promise<Map<number, string>> => {
+  const map = new Map<number, string>();
+  if (ids.length === 0) return map;
+  const rows = await db.emails.where('id').anyOf(ids).toArray();
+  for (const row of rows) {
+    if (row.searchText) map.set(row.id, row.searchText);
+  }
+  return map;
+};
+
+// Load every email's searchText into a Map. Used only by the explicit
+// "apply rules to all" action when an active rule has a body condition; the Map
+// is built on demand and GC'd when the action completes.
+export const getAllSearchText = async (): Promise<Map<number, string>> => {
+  const map = new Map<number, string>();
+  await db.emails.each(row => {
+    if (row.searchText) map.set(row.id, row.searchText);
+  });
+  return map;
 };
 
 // Get email body by ID (for lazy loading) - reads from emailBodies table (post-split)

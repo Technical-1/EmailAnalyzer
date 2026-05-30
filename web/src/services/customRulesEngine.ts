@@ -102,6 +102,52 @@ class CustomRulesEngine {
   }
 
   /**
+   * Convert a set of matched actions into a partial Email patch, relative to the
+   * email's current state. Returns null when nothing would actually change (e.g.
+   * a "star" action on an already-starred email), so callers can skip the write.
+   * Tag actions union onto existing tags.
+   */
+  applyActionsToEmail(email: Email, actions: RuleAction[]): Partial<Email> | null {
+    if (actions.length === 0) return null;
+
+    const patch: Partial<Email> = {};
+    const tags = email.tags ? [...email.tags] : [];
+    let changed = false;
+
+    for (const action of actions) {
+      switch (action.type) {
+        case 'star':
+          if (!email.isStarred && patch.isStarred !== true) {
+            patch.isStarred = true;
+            changed = true;
+          }
+          break;
+        case 'markRead':
+          if (!email.isRead && patch.isRead !== true) {
+            patch.isRead = true;
+            changed = true;
+          }
+          break;
+        case 'move':
+          if (action.value && email.folderId !== action.value && patch.folderId !== action.value) {
+            patch.folderId = action.value;
+            changed = true;
+          }
+          break;
+        case 'tag':
+          if (action.value && !tags.includes(action.value)) {
+            tags.push(action.value);
+            patch.tags = tags;
+            changed = true;
+          }
+          break;
+      }
+    }
+
+    return changed ? patch : null;
+  }
+
+  /**
    * Check if an email matches a rule's conditions
    */
   matchesRule(email: Email, rule: CustomRule): boolean {

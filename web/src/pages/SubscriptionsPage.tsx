@@ -14,7 +14,11 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import { EmptyState } from '../components/EmptyState';
+import { Pagination } from '../components/Pagination';
+import { usePagination } from '../hooks/usePagination';
 import type { Subscription, Email } from '../types';
+
+const SUBSCRIPTIONS_PER_PAGE = 25;
 
 export function SubscriptionsPage() {
   const { subscriptions, emails } = useAppStore();
@@ -60,6 +64,9 @@ export function SubscriptionsPage() {
     const cats = new Set(subscriptions.map(s => s.category));
     return Array.from(cats);
   }, [subscriptions]);
+
+  const { currentPage, setCurrentPage, totalPages, pageItems, rangeStart, rangeEnd, totalItems } =
+    usePagination(filteredSubscriptions, SUBSCRIPTIONS_PER_PAGE);
 
   if (emails.length === 0) {
     return (
@@ -172,8 +179,9 @@ export function SubscriptionsPage() {
 
       {/* Subscription List */}
       {filteredSubscriptions.length > 0 ? (
+        <>
         <div className="space-y-3">
-          {filteredSubscriptions.map((sub) => (
+          {pageItems.map((sub) => (
             <button
               key={sub.id}
               onClick={() => setSelectedSubscription(sub)}
@@ -217,6 +225,17 @@ export function SubscriptionsPage() {
             </button>
           ))}
         </div>
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          totalItems={totalItems}
+          onPageChange={setCurrentPage}
+          itemLabel="subscriptions"
+          ariaLabel="Subscriptions pagination"
+        />
+        </>
       ) : (
         <EmptyState
           icon={RefreshCw}
