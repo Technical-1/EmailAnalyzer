@@ -512,6 +512,11 @@ function parseEmailsFromText(text: string): Omit<Email, 'id'>[] {
 async function parseMBOXFile(file: File): Promise<void> {
   const parser = new MBOXParser();
   let lastBatch = 0;
+  // NOTE: the library's parseStreaming has no cancellation hook, so once started
+  // it reads the whole file. Honoring ctx.isCancelled here stops us EMITTING
+  // batches/progress, but the library keeps parsing in the background until done
+  // (it yields to the event loop between chunks, so the worker stays responsive).
+  // A future lib enhancement could accept an AbortSignal to abort mid-file.
   await parser.parseStreaming(
     file,
     (p) => {
@@ -528,6 +533,7 @@ async function parseMBOXFile(file: File): Promise<void> {
       lastBatch = n;
     }
   );
+  if (ctx.isCancelled) return;
   // parseStreaming flushed its final batch above; signal end-of-stream.
   sendEmailBatch([], lastBatch + 1, true);
   reportProgress('saving', 100, `Parsed ${ctx.totalEmailsParsed} emails successfully`);
