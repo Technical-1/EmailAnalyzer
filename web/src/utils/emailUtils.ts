@@ -3,17 +3,26 @@
  */
 export function cleanEmailAddress(email: string): string {
   if (!email) return 'unknown@example.com';
-  
+
   // Remove angle brackets and extra whitespace
-  let cleaned = email.replace(/[<>]/g, '').trim();
-  
-  // If it's in "Name <email>" format, extract just the email
+  const cleaned = email.replace(/[<>]/g, '').trim();
+
+  // Prefer a fully-qualified address (dotted TLD). Strip any trailing
+  // list-separator punctuation that rode along (e.g. "a@b.com," from a header).
   const match = cleaned.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
   if (match) {
-    cleaned = match[1];
+    return match[1].replace(/[.,;:!?]+$/, '').toLowerCase();
   }
-  
-  return cleaned.toLowerCase() || 'unknown@example.com';
+
+  // Fallback: a bare address with no dotted TLD (e.g. "user@localhost").
+  const bareMatch = cleaned.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+)/);
+  if (bareMatch) {
+    return bareMatch[1].replace(/[.,;:!?]+$/, '').toLowerCase();
+  }
+
+  // No address found — never leak display-name text; use the sentinel that
+  // importPipeline/olmParser check for to drop sender-less emails.
+  return 'unknown@example.com';
 }
 
 /**
@@ -34,6 +43,8 @@ export function extractDomain(email: string): string {
   if (!email) return '';
   
   const cleaned = cleanEmailAddress(email);
+  // The sentinel means no real address was found — it has no meaningful domain.
+  if (cleaned === 'unknown@example.com') return '';
   const atIndex = cleaned.indexOf('@');
   if (atIndex === -1) return '';
   
@@ -65,12 +76,14 @@ export function formatDate(date: Date): string {
  * Format file size for display
  */
 export function formatFileSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  // Clamp the index so out-of-range (TB+/PB+) sizes don't produce an
+  // `undefined` unit.
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(k)), sizes.length - 1);
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 

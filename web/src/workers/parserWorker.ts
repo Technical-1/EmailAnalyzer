@@ -28,14 +28,16 @@ import {
 // Worker-compatible utility functions (no DOM dependencies)
 // ============================================================================
 
+// Keep in sync with cleanEmailAddress in ../utils/emailUtils.ts
 function cleanEmailAddress(email: string): string {
   if (!email) return 'unknown@example.com';
-  let cleaned = email.replace(/[<>]/g, '').trim();
+  const cleaned = email.replace(/[<>]/g, '').trim();
   const match = cleaned.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
-  if (match) {
-    cleaned = match[1];
-  }
-  return cleaned.toLowerCase() || 'unknown@example.com';
+  if (match) return match[1].replace(/[.,;:!?]+$/, '').toLowerCase();
+  const bareMatch = cleaned.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+)/);
+  if (bareMatch) return bareMatch[1].replace(/[.,;:!?]+$/, '').toLowerCase();
+  // Never leak display-name text; use the sentinel downstream code checks for.
+  return 'unknown@example.com';
 }
 
 function normalizeSubject(subject: string): string {
@@ -368,8 +370,10 @@ function parseEmailFromLines(lines: string[]): Omit<Email, 'id'> | null {
     }
 
     const bodyLines = lines.slice(bodyStartIndex);
-    const rawBody = bodyLines.join('\n');
-    
+    // mboxrd un-escaping: body lines that were escaped as ">From "/">>From "
+    // (one extra ">") are restored by stripping a single leading ">".
+    const rawBody = bodyLines.join('\n').replace(/^>(>*From )/gm, '$1');
+
     const contentType = headers['content-type'] || 'text/plain';
     let body = '';
     let htmlBody: string | undefined;

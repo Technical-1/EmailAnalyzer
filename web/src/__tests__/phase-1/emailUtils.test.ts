@@ -26,6 +26,19 @@ describe('emailUtils', () => {
     it('should return default for empty input', () => {
       expect(cleanEmailAddress('')).toBe('unknown@example.com');
     });
+
+    it('should not leak display-name text when there is no address', () => {
+      expect(cleanEmailAddress('John Doe')).toBe('unknown@example.com');
+    });
+
+    it('should strip trailing list-separator punctuation', () => {
+      expect(cleanEmailAddress('john@example.com,')).toBe('john@example.com');
+      expect(cleanEmailAddress('Jane <jane@example.com>;')).toBe('jane@example.com');
+    });
+
+    it('should fall back to a bare address with no dotted TLD', () => {
+      expect(cleanEmailAddress('root <root@localhost>')).toBe('root@localhost');
+    });
   });
 
   describe('stripHtml', () => {
@@ -67,6 +80,19 @@ describe('emailUtils', () => {
 
     it('should handle zero', () => {
       expect(formatFileSize(0)).toBe('0 B');
+    });
+
+    it('should format terabytes and petabytes without an undefined unit', () => {
+      expect(formatFileSize(1024 ** 4)).toBe('1 TB');
+      expect(formatFileSize(2 * 1024 ** 5)).toBe('2 PB');
+      // Above PB clamps to the largest unit rather than overflowing.
+      expect(formatFileSize(1024 ** 6)).toBe('1024 PB');
+    });
+
+    it('should guard against negative and non-finite input', () => {
+      expect(formatFileSize(-5)).toBe('0 B');
+      expect(formatFileSize(NaN)).toBe('0 B');
+      expect(formatFileSize(Infinity)).toBe('0 B');
     });
   });
 
