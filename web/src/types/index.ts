@@ -6,7 +6,7 @@ export interface Email {
   senderName?: string;
   recipients: string[];
   cc?: string[];
-  date: Date;
+  date: Date | null;
   body: string;
   htmlBody?: string;
   attachments: Attachment[];
@@ -38,10 +38,10 @@ export interface Account {
   id?: number;
   serviceName: string;
   signupEmailId?: number;
-  signupDate: Date;
+  signupDate: Date | null;
   serviceType: 'streaming' | 'ecommerce' | 'social' | 'banking' | 'communication' | 'development' | 'other';
   domain: string;
-  lastActivityDate?: Date;
+  lastActivityDate?: Date | null;
   emailCount: number;
 }
 
@@ -68,7 +68,7 @@ export interface Contact {
   notes?: string;
   tags?: string[];
   emailCount: number;
-  lastEmailDate: Date;
+  lastEmailDate: Date | null;
 }
 
 // Calendar event types
@@ -167,7 +167,7 @@ export interface Subscription {
   monthlyAmount: number;
   currency: string;
   frequency: 'weekly' | 'monthly' | 'yearly';
-  lastRenewalDate: Date;
+  lastRenewalDate: Date | null;
   nextRenewalDate?: Date;
   emailIds: number[];
   isActive: boolean;
@@ -180,7 +180,7 @@ export interface Newsletter {
   senderEmail: string;
   senderName: string;
   emailCount: number;
-  lastEmailDate: Date;
+  lastEmailDate: Date | null;
   frequency?: 'daily' | 'weekly' | 'monthly' | 'irregular';
   unsubscribeLink?: string;
   isPromotional: boolean;

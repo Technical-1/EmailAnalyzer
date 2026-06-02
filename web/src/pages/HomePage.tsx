@@ -77,7 +77,7 @@ export function HomePage() {
         
         await insertContact({
           ...contactData,
-          lastEmailDate: new Date(contactData.lastEmailDate),
+          lastEmailDate: contactData.lastEmailDate == null ? null : new Date(contactData.lastEmailDate),
         });
         result.contacts++;
       } catch (err) {

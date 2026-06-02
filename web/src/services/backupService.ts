@@ -87,7 +87,7 @@ class BackupService {
       if (options.dateRange) {
         const startTime = options.dateRange.start.getTime();
         const endTime = options.dateRange.end.getTime();
-        emails = emails.filter((e) => e.date >= startTime && e.date <= endTime);
+        emails = emails.filter((e) => e.date != null && e.date >= startTime && e.date <= endTime);
       }
 
       // Apply folder filter
@@ -97,7 +97,7 @@ class BackupService {
 
       backup.emails = emails.map((e) => ({
         ...e,
-        date: new Date(e.date),
+        date: e.date == null ? null : new Date(e.date),
       })) as unknown as Email[];
       backup.metadata.emailCount = backup.emails.length;
 
@@ -113,7 +113,7 @@ class BackupService {
       const accounts = await db.accounts.toArray();
       backup.accounts = accounts.map((a) => ({
         ...a,
-        signupDate: new Date(a.signupDate),
+        signupDate: a.signupDate == null ? null : new Date(a.signupDate),
       })) as unknown as Account[];
       backup.metadata.accountCount = backup.accounts.length;
     }
@@ -133,7 +133,7 @@ class BackupService {
       const contacts = await db.contacts.toArray();
       backup.contacts = contacts.map((c) => ({
         ...c,
-        lastEmailDate: new Date(c.lastEmailDate),
+        lastEmailDate: c.lastEmailDate == null ? null : new Date(c.lastEmailDate),
       })) as unknown as Contact[];
       backup.metadata.contactCount = backup.contacts.length;
     }
@@ -164,7 +164,7 @@ class BackupService {
       const subscriptions = await db.subscriptions.toArray();
       backup.subscriptions = subscriptions.map((s) => ({
         ...s,
-        lastRenewalDate: new Date(s.lastRenewalDate),
+        lastRenewalDate: s.lastRenewalDate == null ? null : new Date(s.lastRenewalDate),
         nextRenewalDate: s.nextRenewalDate ? new Date(s.nextRenewalDate) : undefined,
         emailIds: typeof s.emailIds === 'string' ? JSON.parse(s.emailIds) : (s.emailIds || []),
       })) as unknown as Subscription[];
@@ -176,7 +176,7 @@ class BackupService {
       const newsletters = await db.newsletters.toArray();
       backup.newsletters = newsletters.map((n) => ({
         ...n,
-        lastEmailDate: new Date(n.lastEmailDate),
+        lastEmailDate: n.lastEmailDate == null ? null : new Date(n.lastEmailDate),
       })) as unknown as Newsletter[];
       backup.metadata.newsletterCount = backup.newsletters.length;
     }

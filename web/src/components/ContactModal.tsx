@@ -85,7 +85,7 @@ export function ContactModal({ contact, isOpen, onClose, onSave }: ContactModalP
               <span>{contact.email}</span>
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
-              {contact.emailCount} emails • Last activity: {contact.lastEmailDate.toLocaleDateString()}
+              {contact.emailCount} emails • Last activity: {contact.lastEmailDate ? contact.lastEmailDate.toLocaleDateString() : 'Unknown date'}
             </p>
           </div>
 

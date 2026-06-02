@@ -30,11 +30,18 @@ import {
   updateEmailFolder,
   updateEmailTags,
 } from '../db/database';
-import { accountDetector } from './accountDetector';
-import { purchaseDetector } from './purchaseDetector';
-import { subscriptionDetector } from './subscriptionDetector';
-import { newsletterDetector } from './newsletterDetector';
+import {
+  AccountDetector,
+  PurchaseDetector,
+  SubscriptionDetector,
+  NewsletterDetector,
+} from '@technical-1/email-archive-parser';
 import { customRulesEngine } from './customRulesEngine';
+
+const accountDetector = new AccountDetector();
+const purchaseDetector = new PurchaseDetector();
+const subscriptionDetector = new SubscriptionDetector();
+const newsletterDetector = new NewsletterDetector();
 import { extractDomain } from '../utils/emailUtils';
 import { logger } from '../utils/logger';
 
@@ -53,44 +60,52 @@ export function createImportCounts(): OLMProcessingResult {
 /** Run all four detectors against a single (already-persisted) email. */
 export async function runDetection(email: Email, counts: OLMProcessingResult): Promise<void> {
   // Account signups
-  const accountResult = accountDetector.detectAccountSignup(email);
+  const accountResult = accountDetector.detect(email);
   if (accountResult.type === 'account' && accountResult.data?.serviceName) {
     const existingAccount = await getAccountByServiceName(accountResult.data.serviceName);
     if (!existingAccount) {
-      const accountData = accountDetector.createAccountFromEmail(
-        email,
-        accountResult.data.serviceName,
-        accountResult.data.serviceType as Account['serviceType'],
-      );
-      await insertAccount(accountData);
+      await insertAccount({
+        serviceName: accountResult.data.serviceName,
+        signupEmailId: email.id,
+        signupDate: email.date,
+        serviceType: (accountResult.data.serviceType ?? 'other') as Account['serviceType'],
+        domain: extractDomain(email.sender),
+        lastActivityDate: email.date,
+        emailCount: 1,
+      });
       counts.accounts++;
     }
   }
 
   // Purchases
-  const purchaseResult = purchaseDetector.detectPurchase(email);
-  if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount) {
+  const purchaseResult = purchaseDetector.detect(email);
+  // Purchases require a concrete date (Purchase.purchaseDate is non-nullable and
+  // the dedup window keys off it). Undated emails are skipped for purchase records.
+  if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount && email.date) {
+    const purchaseDate = email.date;
     const merchant = purchaseResult.data.merchant || 'Unknown';
     const amount = purchaseResult.data.amount;
     const orderNumber = purchaseResult.data.orderNumber;
     const currency = purchaseResult.data.currency;
 
-    const existingPurchase = await findDuplicatePurchase(merchant, amount, email.date, orderNumber);
+    const existingPurchase = await findDuplicatePurchase(merchant, amount, purchaseDate, orderNumber);
     if (!existingPurchase) {
-      const purchaseData = purchaseDetector.createPurchaseFromEmail(
-        email,
+      await insertPurchase({
+        emailId: email.id,
         merchant,
         amount,
+        currency: currency || 'USD',
+        purchaseDate,
         orderNumber,
-        currency,
-      );
-      await insertPurchase(purchaseData);
+        items: [],
+        category: purchaseDetector.getCategory(merchant),
+      });
       counts.purchases++;
     }
   }
 
   // Subscriptions — dedupe by serviceName, then by sender domain.
-  const subResult = subscriptionDetector.detectSubscription(email);
+  const subResult = subscriptionDetector.detect(email);
   if (subResult.isSubscription && subResult.serviceName) {
     const senderDomain = extractDomain(email.sender);
 
@@ -101,7 +116,7 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
 
     if (existingSub) {
       const emailIds = [...new Set([...existingSub.emailIds, email.id!])];
-      const isNewerEmail = email.date > existingSub.lastRenewalDate;
+      const isNewerEmail = !!email.date && (!existingSub.lastRenewalDate || email.date > existingSub.lastRenewalDate);
       const shouldUpdateAmount = isNewerEmail && subResult.amount != null && subResult.amount > 0;
 
       await updateSubscription(existingSub.id!, {
@@ -127,13 +142,13 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
   }
 
   // Newsletters / promotional
-  const nlResult = newsletterDetector.detectNewsletter(email);
+  const nlResult = newsletterDetector.detect(email);
   if (nlResult.isNewsletter || nlResult.isPromotional) {
     const existingNL = await getNewsletterBySender(email.sender);
     if (existingNL) {
       await updateNewsletter(existingNL.id!, {
         emailCount: existingNL.emailCount + 1,
-        lastEmailDate: email.date > existingNL.lastEmailDate ? email.date : existingNL.lastEmailDate,
+        lastEmailDate: email.date && (!existingNL.lastEmailDate || email.date > existingNL.lastEmailDate) ? email.date : existingNL.lastEmailDate,
         unsubscribeLink: nlResult.unsubscribeLink || existingNL.unsubscribeLink,
       });
     } else {
@@ -218,7 +233,7 @@ export async function processEmailBatch(
   if (batch.length === 0) return;
 
   // Worker messages may serialize dates to strings; coerce defensively.
-  const emails = batch.map((e) => ({ ...e, date: new Date(e.date) }));
+  const emails = batch.map((e) => ({ ...e, date: e.date == null ? null : new Date(e.date) }));
   for (const e of emails) {
     if (e.folderId) folderIds.add(e.folderId);
   }

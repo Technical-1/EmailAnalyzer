@@ -125,7 +125,7 @@ export const EmailCard = memo(function EmailCard({ email, onClick }: EmailCardPr
               </button>
               
               <span className="text-xs text-slate-400 dark:text-slate-500 ml-2">
-                {format(email.date, 'MMM d, yyyy')}
+                {email.date ? format(email.date, 'MMM d, yyyy') : 'Unknown date'}
               </span>
             </div>
           </div>

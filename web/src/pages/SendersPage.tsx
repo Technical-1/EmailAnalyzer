@@ -121,7 +121,8 @@ export function SendersPage() {
       const existing = groups.get(key);
       if (existing) {
         existing.emails.push(email);
-        if (new Date(email.date) > existing.latestDate) {
+        // Only advance latestDate from emails that have a real date.
+        if (email.date && new Date(email.date) > existing.latestDate) {
           existing.latestDate = new Date(email.date);
         }
       } else {
@@ -129,7 +130,8 @@ export function SendersPage() {
           key,
           displayName,
           emails: [email],
-          latestDate: new Date(email.date),
+          // Undated first email seeds the epoch (sorts last); real dates override later.
+          latestDate: email.date ? new Date(email.date) : new Date(0),
         });
       }
     });
@@ -358,7 +360,7 @@ export function SendersPage() {
                             </p>
                           </div>
                           <span className="text-xs text-slate-500 dark:text-slate-400 flex-shrink-0">
-                            {format(email.date, 'MMM d, yyyy')}
+                            {email.date ? format(email.date, 'MMM d, yyyy') : 'Unknown date'}
                           </span>
                         </button>
                         

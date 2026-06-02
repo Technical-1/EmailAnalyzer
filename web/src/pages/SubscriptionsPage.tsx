@@ -218,7 +218,7 @@ export function SubscriptionsPage() {
                   </span>
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Last: {format(sub.lastRenewalDate, 'MMM d, yyyy')}
+                  Last: {sub.lastRenewalDate ? format(sub.lastRenewalDate, 'MMM d, yyyy') : 'Unknown date'}
                 </div>
               </div>
               <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
@@ -302,7 +302,7 @@ export function SubscriptionsPage() {
                 <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
                   <div className="text-sm text-slate-500 dark:text-slate-400">Last Payment</div>
                   <div className="font-semibold text-slate-900 dark:text-white">
-                    {format(selectedSubscription.lastRenewalDate, 'MMM d, yyyy')}
+                    {selectedSubscription.lastRenewalDate ? format(selectedSubscription.lastRenewalDate, 'MMM d, yyyy') : 'Unknown date'}
                   </div>
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
@@ -336,7 +336,7 @@ export function SubscriptionsPage() {
                           {email.subject || '(No Subject)'}
                         </div>
                         <div className="text-sm text-slate-500 dark:text-slate-400">
-                          {format(email.date, 'MMM d, yyyy')} • {email.sender}
+                          {email.date ? format(email.date, 'MMM d, yyyy') : 'Unknown date'} • {email.sender}
                         </div>
                       </div>
                       <ExternalLink className="w-4 h-4 text-slate-400 flex-shrink-0" />

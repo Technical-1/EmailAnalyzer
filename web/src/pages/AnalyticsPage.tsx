@@ -15,6 +15,7 @@ export function AnalyticsPage() {
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     emails.forEach((email) => {
+      if (!email.date) return; // undated emails contribute no year
       years.add(new Date(email.date).getFullYear());
     });
     return Array.from(years).sort((a, b) => b - a); // Most recent first
@@ -23,7 +24,7 @@ export function AnalyticsPage() {
   // Filter data by selected year
   const filteredEmails = useMemo(() => {
     if (selectedYear === 'all') return emails;
-    return emails.filter(e => new Date(e.date).getFullYear() === selectedYear);
+    return emails.filter(e => e.date != null && new Date(e.date).getFullYear() === selectedYear);
   }, [emails, selectedYear]);
 
   const filteredPurchases = useMemo(() => {
@@ -36,13 +37,16 @@ export function AnalyticsPage() {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    const recentEmails = filteredEmails.filter(e => new Date(e.date) >= thirtyDaysAgo);
+    const recentEmails = filteredEmails.filter(e => e.date != null && new Date(e.date) >= thirtyDaysAgo);
     const uniqueSenders = new Set(filteredEmails.map(e => e.sender)).size;
 
     // Calculate date range for avg emails/day (inclusive of both start and end days)
     let dateRange = 1;
     if (filteredEmails.length > 0) {
-      const sortedDates = filteredEmails.map(e => new Date(e.date).getTime()).sort((a, b) => a - b);
+      const sortedDates = filteredEmails
+        .filter(e => e.date != null)
+        .map(e => new Date(e.date as Date).getTime())
+        .sort((a, b) => a - b);
       const oldestDate = sortedDates[0];
       const newestDate = sortedDates[sortedDates.length - 1];
       // Add 1 for inclusive counting: emails from Jan 1 to Jan 2 span 2 calendar days
@@ -62,6 +66,7 @@ export function AnalyticsPage() {
     const monthlyData: Record<string, number> = {};
     
     filteredEmails.forEach((email) => {
+      if (!email.date) return; // undated emails excluded from volume aggregation
       const date = new Date(email.date);
       const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       monthlyData[key] = (monthlyData[key] || 0) + 1;
@@ -127,6 +132,7 @@ export function AnalyticsPage() {
     const hourlyData: number[][] = Array(7).fill(null).map(() => Array(24).fill(0));
     
     filteredEmails.forEach((email) => {
+      if (!email.date) return; // undated emails excluded from activity heatmap
       const date = new Date(email.date);
       const day = date.getDay();
       const hour = date.getHours();

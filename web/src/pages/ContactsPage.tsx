@@ -52,7 +52,7 @@ export function ContactsPage() {
         case 'emailCount':
           return b.emailCount - a.emailCount;
         case 'lastActivity':
-          return new Date(b.lastEmailDate).getTime() - new Date(a.lastEmailDate).getTime();
+          return (b.lastEmailDate?.getTime() ?? -Infinity) - (a.lastEmailDate?.getTime() ?? -Infinity);
         default:
           return 0;
       }
@@ -221,7 +221,7 @@ export function ContactsPage() {
                   </div>
                   <span className="text-slate-400 dark:text-slate-500">•</span>
                   <span className="text-slate-500 dark:text-slate-400">
-                    {format(contact.lastEmailDate, 'MMM d, yyyy')}
+                    {contact.lastEmailDate ? format(contact.lastEmailDate, 'MMM d, yyyy') : 'Unknown date'}
                   </span>
                 </div>
 
