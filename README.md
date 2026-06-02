@@ -20,7 +20,7 @@ Explore years of archived emails offline. Automatically discover accounts, track
 
 | Feature | Description |
 |---------|-------------|
-| 📥 **Universal Import** | Supports `.olm` (Outlook), `.mbox` (Gmail/Thunderbird), and Gmail Takeout `.zip` files |
+| 📥 **Universal Import** | Supports `.olm` (Outlook), `.mbox` (Gmail/Thunderbird), and Gmail Takeout `.zip` files, with charset-aware MIME decoding for international headers and resilient handling of malformed senders |
 | 🔍 **Smart Search** | Advanced syntax: `from:`, `subject:`, `has:attachment`, `before:`, date ranges, and more |
 | 🔐 **Account Detection** | Auto-discovers signups from 100+ services (Netflix, Amazon, GitHub, etc.) |
 | 🛒 **Purchase Tracking** | Extracts orders, amounts, and merchants from receipt emails |
