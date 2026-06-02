@@ -70,6 +70,7 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
         signupDate: email.date,
         serviceType: (accountResult.data.serviceType ?? 'other') as Account['serviceType'],
         domain: extractDomain(email.sender),
+        lastActivityDate: email.date,
         emailCount: 1,
       });
       counts.accounts++;
