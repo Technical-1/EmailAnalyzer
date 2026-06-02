@@ -6,7 +6,7 @@ export interface Email {
   senderName?: string;
   recipients: string[];
   cc?: string[];
-  date: Date;
+  date: Date | null;
   body: string;
   htmlBody?: string;
   attachments: Attachment[];

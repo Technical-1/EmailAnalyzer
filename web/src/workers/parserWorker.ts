@@ -6,7 +6,9 @@
  */
 
 import JSZip from 'jszip';
+import { MBOXParser } from '@technical-1/email-archive-parser';
 import type { Email, Contact, CalendarEvent } from '../types';
+import { toAppEmail } from './toAppEmail';
 import type {
   WorkerInputMessage,
   WorkerOutputMessage,
@@ -195,6 +197,13 @@ function findLastFromLine(text: string): number {
   
   return lastIndex;
 }
+
+// Retained for the OLM/Gmail-Takeout paths still migrating to the library.
+// The MBOX path now delegates to @technical-1/email-archive-parser, so these
+// chunking helpers are temporarily unreferenced; deletion happens in the later
+// cleanup phase. Reference them here to satisfy noUnusedLocals until then.
+void MBOX_CHUNK_SIZE;
+void findLastFromLine;
 
 function parseEmailAddress(str: string): { email: string; name?: string } {
   const trimmed = decodeRfc2047(str.trim());
@@ -501,82 +510,26 @@ function parseEmailsFromText(text: string): Omit<Email, 'id'>[] {
 }
 
 async function parseMBOXFile(file: File): Promise<void> {
-  const fileSize = file.size;
-  let offset = 0;
-  let leftover = '';
-  let batchNumber = 0;
-  let currentBatch: Omit<Email, 'id'>[] = [];
-
-  reportProgress('extracting', 0, `Processing ${(fileSize / 1024 / 1024).toFixed(1)}MB file...`);
-
-  while (offset < fileSize && !ctx.isCancelled) {
-    const chunkEnd = Math.min(offset + MBOX_CHUNK_SIZE, fileSize);
-    const chunk = file.slice(offset, chunkEnd);
-    
-    let chunkText: string;
-    try {
-      chunkText = await chunk.text();
-    } catch (e) {
-      console.error('Error reading chunk:', e);
-      break;
+  const parser = new MBOXParser();
+  let lastBatch = 0;
+  await parser.parseStreaming(
+    file,
+    (p) => {
+      if (ctx.isCancelled) return;
+      // Map the library's 'complete' stage onto the worker's 'saving' stage.
+      const stage = p.stage === 'complete' ? 'saving' : p.stage;
+      reportProgress(stage as 'extracting' | 'parsing_emails' | 'saving', p.progress, p.message);
+    },
+    async (batch, n) => {
+      if (ctx.isCancelled) return;
+      const mapped = batch.map(toAppEmail);
+      sendEmailBatch(mapped, n, false);
+      ctx.totalEmailsParsed += mapped.length;
+      lastBatch = n;
     }
-    
-    const textToProcess = leftover + chunkText;
-    const lastFromIndex = findLastFromLine(textToProcess);
-    
-    let processableText: string;
-    if (lastFromIndex > 0 && chunkEnd < fileSize) {
-      processableText = textToProcess.substring(0, lastFromIndex);
-      leftover = textToProcess.substring(lastFromIndex);
-    } else {
-      processableText = textToProcess;
-      leftover = '';
-    }
-
-    const chunkEmails = parseEmailsFromText(processableText);
-    
-    for (const email of chunkEmails) {
-      currentBatch.push(email);
-      
-      if (currentBatch.length >= BATCH_SIZE) {
-        sendEmailBatch(currentBatch, batchNumber, false);
-        ctx.totalEmailsParsed += currentBatch.length;
-        batchNumber++;
-        currentBatch = [];
-        
-        // Yield to allow message processing
-        await new Promise(resolve => setTimeout(resolve, 0));
-      }
-    }
-
-    offset = chunkEnd;
-    const progress = Math.round((offset / fileSize) * 95);
-    reportProgress(
-      'parsing_emails',
-      progress,
-      `Parsed ${ctx.totalEmailsParsed + currentBatch.length} emails (${Math.round(offset / fileSize * 100)}% read)...`
-    );
-    
-    await new Promise(resolve => setTimeout(resolve, 0));
-  }
-
-  // Process remaining text
-  if (leftover.trim() && !ctx.isCancelled) {
-    const finalEmails = parseEmailsFromText(leftover);
-    for (const email of finalEmails) {
-      currentBatch.push(email);
-    }
-  }
-
-  // Send final batch
-  if (currentBatch.length > 0) {
-    sendEmailBatch(currentBatch, batchNumber, true);
-    ctx.totalEmailsParsed += currentBatch.length;
-  } else {
-    // Send empty final batch to signal completion
-    sendEmailBatch([], batchNumber, true);
-  }
-
+  );
+  // parseStreaming flushed its final batch above; signal end-of-stream.
+  sendEmailBatch([], lastBatch + 1, true);
   reportProgress('saving', 100, `Parsed ${ctx.totalEmailsParsed} emails successfully`);
 }
 
