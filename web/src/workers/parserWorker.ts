@@ -6,7 +6,7 @@
  */
 
 import JSZip from 'jszip';
-import { MBOXParser } from '@technical-1/email-archive-parser';
+import { MBOXParser, OLMParser } from '@technical-1/email-archive-parser';
 import type { Email, Contact, CalendarEvent } from '../types';
 import { toAppEmail } from './toAppEmail';
 import type {
@@ -543,357 +543,46 @@ async function parseMBOXFile(file: File): Promise<void> {
 // OLM Parser (Worker version)
 // ============================================================================
 
-function parseOLMEmailXML(xmlContent: string): Omit<Email, 'id'> | null {
-  try {
-    // Simple XML parsing without DOMParser (not available in workers in some browsers)
-    // We'll use regex-based parsing for reliability
-    
-    const getTagContent = (content: string, tagName: string): string => {
-      const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i');
-      const match = content.match(regex);
-      return match ? match[1].trim() : '';
-    };
-    
-    const getAttribute = (content: string, tagName: string, attrName: string): string => {
-      const tagRegex = new RegExp(`<${tagName}[^>]*${attrName}="([^"]*)"[^>]*>`, 'i');
-      const match = content.match(tagRegex);
-      return match ? match[1] : '';
-    };
-
-    const subject = getTagContent(xmlContent, 'OPFMessageCopySubject') || 
-                    getTagContent(xmlContent, 'subject') || 
-                    '(No Subject)';
-    const body = getTagContent(xmlContent, 'OPFMessageCopyBody') || 
-                 getTagContent(xmlContent, 'body') || '';
-    const htmlBody = getTagContent(xmlContent, 'OPFMessageCopyHTMLBody') || 
-                     getTagContent(xmlContent, 'htmlBody') || undefined;
-    const preview = getTagContent(xmlContent, 'OPFMessageCopyPreview');
-    
-    // Parse sender
-    const fromAddresses = getTagContent(xmlContent, 'OPFMessageCopyFromAddresses');
-    let sender = '';
-    let senderName = '';
-    if (fromAddresses) {
-      sender = getAttribute(fromAddresses, 'emailAddress', 'OPFContactEmailAddressAddress');
-      senderName = getAttribute(fromAddresses, 'emailAddress', 'OPFContactEmailAddressName');
-    }
-    if (!sender) {
-      sender = getTagContent(xmlContent, 'from') || getTagContent(xmlContent, 'sender') || '';
-    }
-    
-    // Parse date
-    const dateStr = getTagContent(xmlContent, 'OPFMessageCopySentTime') || 
-                    getTagContent(xmlContent, 'OPFMessageCopyReceivedTime') || 
-                    getTagContent(xmlContent, 'date') || '';
-    const date = dateStr ? new Date(dateStr) : new Date();
-    
-    // Parse recipients
-    const recipients: string[] = [];
-    const toAddresses = getTagContent(xmlContent, 'OPFMessageCopyToAddresses');
-    if (toAddresses) {
-      const emailMatches = toAddresses.matchAll(/OPFContactEmailAddressAddress="([^"]+)"/g);
-      for (const match of emailMatches) {
-        recipients.push(match[1]);
-      }
-    }
-
-    // Parse isRead status
-    const isReadStr = getTagContent(xmlContent, 'OPFMessageGetIsRead');
-    const isRead = isReadStr === '1' || isReadStr.toLowerCase() === 'true';
-
-    // Parse thread ID
-    let threadId = getTagContent(xmlContent, 'OPFMessageCopyThreadTopic') ||
-                   getTagContent(xmlContent, 'OPFMessageCopyConversationID') || '';
-
-    if (!threadId) {
-      const normalizedSubject = normalizeSubject(subject);
-      if (normalizedSubject) {
-        threadId = `subject:${normalizedSubject.toLowerCase().replace(/\s+/g, '-')}`;
-      }
-    }
-
-    if (!subject && !body && !preview) {
-      return null;
-    }
-
-    return {
-      subject: (subject || '(No Subject)').slice(0, MAX_SUBJECT_LEN),
-      sender: cleanEmailAddress(sender).slice(0, MAX_EMAIL_LEN),
-      senderName: senderName || undefined,
-      recipients: recipients.map(r => r.slice(0, MAX_EMAIL_LEN)).slice(0, 1000),
-      date: isNaN(date.getTime()) ? new Date() : date,
-      body: (() => { const b = body || preview || ''; return b.length > MAX_BODY_LEN ? b.slice(0, MAX_BODY_LEN) : b; })(),
-      htmlBody: htmlBody && htmlBody.length > MAX_BODY_LEN ? htmlBody.slice(0, MAX_BODY_LEN) : (htmlBody || undefined),
-      snippet: makeSnippet(htmlBody || body || preview || ''),
-      attachments: [],
-      size: xmlContent.length,
-      isRead,
-      isStarred: false,
-      folderId: 'inbox',
-      threadId: threadId || undefined,
-      emailType: 'regular',
-    };
-  } catch (error) {
-    console.warn('Failed to parse OLM email XML:', error);
-    return null;
-  }
-}
-
-function parseOLMContactsXML(xmlContent: string): Omit<Contact, 'id'>[] {
-  const contacts: Omit<Contact, 'id'>[] = [];
-  
-  try {
-    const getTagContent = (content: string, tagName: string): string => {
-      const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i');
-      const match = content.match(regex);
-      return match ? match[1].trim() : '';
-    };
-    
-    const getAttribute = (content: string, tagName: string, attrName: string): string => {
-      const tagRegex = new RegExp(`<${tagName}[^>]*${attrName}="([^"]*)"[^>]*>`, 'i');
-      const match = content.match(tagRegex);
-      return match ? match[1] : '';
-    };
-
-    // Find all contact elements
-    const contactMatches = xmlContent.matchAll(/<contact[^>]*>([\s\S]*?)<\/contact>/gi);
-    
-    for (const contactMatch of contactMatches) {
-      const contactContent = contactMatch[1];
-      
-      const displayName = getTagContent(contactContent, 'OPFContactCopyDisplayName') || 
-                          getTagContent(contactContent, 'displayName') || '';
-      const firstName = getTagContent(contactContent, 'OPFContactCopyFirstName') || '';
-      const lastName = getTagContent(contactContent, 'OPFContactCopyLastName') || '';
-      const phone = getTagContent(contactContent, 'OPFContactCopyPhoneNumbers') || '';
-      
-      // Get email
-      let email = '';
-      const emailList = getTagContent(contactContent, 'OPFContactCopyEmailAddressList') ||
-                        getTagContent(contactContent, 'OPFContactCopyDefaultEmailAddress');
-      if (emailList) {
-        email = getAttribute(emailList, 'contactEmailAddress', 'OPFContactEmailAddressAddress');
-      }
-      if (!email) {
-        email = getTagContent(contactContent, 'email') || '';
-      }
-
-      const name = displayName || `${firstName} ${lastName}`.trim() || email.split('@')[0] || 'Unknown';
-
-      if (email || name !== 'Unknown') {
-        contacts.push({
-          name,
-          email: cleanEmailAddress(email),
-          phone: phone || undefined,
-          emailCount: 0,
-          lastEmailDate: new Date(),
-        });
-      }
-    }
-  } catch (error) {
-    console.warn('Failed to parse OLM contacts XML:', error);
-  }
-  
-  return contacts;
-}
-
-function parseOLMCalendarXML(xmlContent: string): Omit<CalendarEvent, 'id'>[] {
-  const events: Omit<CalendarEvent, 'id'>[] = [];
-  
-  try {
-    const getTagContent = (content: string, tagName: string): string => {
-      const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i');
-      const match = content.match(regex);
-      return match ? match[1].trim() : '';
-    };
-
-    // Find all appointment elements
-    const appointmentMatches = xmlContent.matchAll(/<appointment[^>]*>([\s\S]*?)<\/appointment>/gi);
-    
-    for (const appointmentMatch of appointmentMatches) {
-      const appointmentContent = appointmentMatch[1];
-      
-      const title = getTagContent(appointmentContent, 'OPFCalendarEventCopySummary') ||
-                    getTagContent(appointmentContent, 'OPFCalendarEventCopySubject') ||
-                    getTagContent(appointmentContent, 'summary') || '';
-      const startDateStr = getTagContent(appointmentContent, 'OPFCalendarEventCopyStartTime') || '';
-      const endDateStr = getTagContent(appointmentContent, 'OPFCalendarEventCopyEndTime') || '';
-      const location = getTagContent(appointmentContent, 'OPFCalendarEventCopyLocation') || '';
-      const description = getTagContent(appointmentContent, 'OPFCalendarEventCopyBody') || '';
-      const organizer = getTagContent(appointmentContent, 'OPFCalendarEventCopyOrganizer') || '';
-      const isAllDayStr = getTagContent(appointmentContent, 'OPFCalendarEventGetIsAllDayEvent') || '';
-
-      if (!title) continue;
-
-      const startDate = startDateStr ? new Date(startDateStr) : new Date();
-      const endDate = endDateStr ? new Date(endDateStr) : new Date(startDate.getTime() + 3600000);
-
-      events.push({
-        title,
-        startDate: isNaN(startDate.getTime()) ? new Date() : startDate,
-        endDate: isNaN(endDate.getTime()) ? new Date() : endDate,
-        location: location || undefined,
-        attendees: organizer ? [organizer] : [],
-        description: description || undefined,
-        isAllDay: isAllDayStr === '1' || isAllDayStr.toLowerCase() === 'true',
-        reminder: false,
-        isRead: false,
-      });
-    }
-  } catch (error) {
-    console.warn('Failed to parse OLM calendar XML:', error);
-  }
-  
-  return events;
-}
-
 async function parseOLMFile(file: File): Promise<void> {
-  reportProgress('extracting', 0, 'Extracting OLM archive...');
-
   if (file.size > MAX_COMPRESSED_BYTES) {
     throw new Error(`File too large (${(file.size / 1024 / 1024).toFixed(0)}MB). Maximum supported size is 500MB.`);
   }
+  reportProgress('extracting', 0, 'Extracting OLM archive...');
 
-  const zip = await JSZip.loadAsync(file);
+  const result = await new OLMParser().parse(file, {
+    onProgress: (p) => {
+      if (ctx.isCancelled) return;
+      const stage = p.stage === 'complete' ? 'saving' : p.stage;
+      reportProgress(stage as 'extracting' | 'parsing_emails' | 'parsing_contacts' | 'parsing_calendar' | 'saving', p.progress, p.message);
+    },
+  });
+  if (ctx.isCancelled) return;
 
-  let totalDecompressedSize = 0;
-  for (const entry of Object.values(zip.files)) {
-    if (!entry.dir) {
-      const entryData = (entry as unknown as { _data?: { uncompressedSize?: number } })._data;
-      if (entryData && typeof entryData.uncompressedSize === 'number') {
-        totalDecompressedSize += entryData.uncompressedSize;
-      }
-    }
+  // Stream emails to the main thread in BATCH_SIZE chunks (worker contract).
+  for (let i = 0; i < result.emails.length; i += BATCH_SIZE) {
+    if (ctx.isCancelled) return;
+    const slice = result.emails.slice(i, i + BATCH_SIZE).map(toAppEmail);
+    const isLast = i + BATCH_SIZE >= result.emails.length;
+    sendEmailBatch(slice, Math.floor(i / BATCH_SIZE), isLast);
+    ctx.totalEmailsParsed += slice.length;
+    await new Promise((r) => setTimeout(r, 0));
   }
-  if (totalDecompressedSize > MAX_DECOMPRESSED_BYTES) {
-    throw new Error('Archive decompressed size exceeds 2GB limit. This may be a malicious file.');
-  }
+  if (result.emails.length === 0) sendEmailBatch([], 0, true);
 
-  reportProgress('extracting', 100, 'Archive extracted successfully');
+  // Contacts (library extracts Address Book + sender-derived) and calendar events.
+  const contacts = result.contacts.map((c) => ({
+    name: c.name,
+    email: c.email,
+    phone: c.phone,
+    emailCount: c.emailCount,
+    lastEmailDate: c.lastEmailDate,
+  }));
+  sendContactBatch(contacts, 0, true);
+  ctx.totalContactsParsed = contacts.length;
 
-  const files = Object.keys(zip.files);
-  
-  const emailFiles = files.filter(f => 
-    f.includes('com.microsoft.__Messages/') && 
-    f.match(/message_\d+\.xml$/) && 
-    !zip.files[f].dir
-  );
-  
-  const contactFiles = files.filter(f => 
-    (f.includes('Address Book/Contacts.xml') || 
-     (f.includes('/Contacts/') && f.endsWith('.xml'))) && 
-    !zip.files[f].dir
-  );
-  
-  const calendarFiles = files.filter(f => 
-    f.includes('/Calendar/') && 
-    f.endsWith('Calendar.xml') && 
-    !zip.files[f].dir
-  );
-
-  console.log(`Found ${emailFiles.length} emails, ${contactFiles.length} contact files, ${calendarFiles.length} calendar files`);
-
-  // Parse emails
-  if (emailFiles.length > 0) {
-    reportProgress('parsing_emails', 0, `Parsing ${emailFiles.length} emails...`);
-    
-    let currentBatch: Omit<Email, 'id'>[] = [];
-    let batchNumber = 0;
-
-    for (let i = 0; i < emailFiles.length && !ctx.isCancelled; i++) {
-      try {
-        const content = await zip.files[emailFiles[i]].async('string');
-        const email = parseOLMEmailXML(content);
-        if (email) {
-          currentBatch.push(email);
-          
-          if (currentBatch.length >= BATCH_SIZE) {
-            sendEmailBatch(currentBatch, batchNumber, false);
-            ctx.totalEmailsParsed += currentBatch.length;
-            batchNumber++;
-            currentBatch = [];
-            await new Promise(resolve => setTimeout(resolve, 0));
-          }
-        }
-      } catch (err) {
-        console.warn(`Failed to parse email ${emailFiles[i]}:`, err);
-      }
-
-      if (i % 100 === 0 || i === emailFiles.length - 1) {
-        reportProgress(
-          'parsing_emails',
-          Math.round((i + 1) / emailFiles.length * 100),
-          `Parsed ${ctx.totalEmailsParsed + currentBatch.length} of ${emailFiles.length} emails`
-        );
-      }
-    }
-    
-    // Send final email batch
-    if (currentBatch.length > 0) {
-      sendEmailBatch(currentBatch, batchNumber, true);
-      ctx.totalEmailsParsed += currentBatch.length;
-    } else {
-      sendEmailBatch([], batchNumber, true);
-    }
-  } else {
-    sendEmailBatch([], 0, true);
-  }
-
-  // Parse contacts
-  if (contactFiles.length > 0 && !ctx.isCancelled) {
-    reportProgress('parsing_contacts', 0, 'Parsing contacts...');
-    
-    const allContacts: Omit<Contact, 'id'>[] = [];
-    
-    for (let i = 0; i < contactFiles.length && !ctx.isCancelled; i++) {
-      try {
-        const content = await zip.files[contactFiles[i]].async('string');
-        const contacts = parseOLMContactsXML(content);
-        allContacts.push(...contacts);
-      } catch (err) {
-        console.warn(`Failed to parse contacts ${contactFiles[i]}:`, err);
-      }
-    }
-    
-    if (allContacts.length > 0) {
-      sendContactBatch(allContacts, 0, true);
-      ctx.totalContactsParsed = allContacts.length;
-    } else {
-      sendContactBatch([], 0, true);
-    }
-    
-    reportProgress('parsing_contacts', 100, `Parsed ${ctx.totalContactsParsed} contacts`);
-  } else {
-    sendContactBatch([], 0, true);
-  }
-
-  // Parse calendar events
-  if (calendarFiles.length > 0 && !ctx.isCancelled) {
-    reportProgress('parsing_calendar', 0, 'Parsing calendar files...');
-    
-    const allEvents: Omit<CalendarEvent, 'id'>[] = [];
-    
-    for (let i = 0; i < calendarFiles.length && !ctx.isCancelled; i++) {
-      try {
-        const content = await zip.files[calendarFiles[i]].async('string');
-        const events = parseOLMCalendarXML(content);
-        allEvents.push(...events);
-      } catch (err) {
-        console.warn(`Failed to parse calendar ${calendarFiles[i]}:`, err);
-      }
-    }
-    
-    if (allEvents.length > 0) {
-      sendCalendarBatch(allEvents, 0, true);
-      ctx.totalCalendarEventsParsed = allEvents.length;
-    } else {
-      sendCalendarBatch([], 0, true);
-    }
-    
-    reportProgress('parsing_calendar', 100, `Parsed ${ctx.totalCalendarEventsParsed} calendar events`);
-  } else {
-    sendCalendarBatch([], 0, true);
-  }
+  const events = result.calendarEvents.map((ev) => ({ ...ev, isRead: false }));
+  sendCalendarBatch(events, 0, true);
+  ctx.totalCalendarEventsParsed = events.length;
 
   reportProgress('saving', 100, 'Processing complete!');
 }
