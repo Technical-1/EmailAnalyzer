@@ -238,7 +238,7 @@ export function EmailDetailPage() {
                 </div>
               )}
               <div className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                {format(email.date, 'EEEE, MMMM d, yyyy \'at\' h:mm a')}
+                {email.date ? format(email.date, 'EEEE, MMMM d, yyyy \'at\' h:mm a') : 'Unknown date'}
                 {email.folderId !== SYSTEM_FOLDERS.INBOX && (
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                     email.folderId === SYSTEM_FOLDERS.ARCHIVE 

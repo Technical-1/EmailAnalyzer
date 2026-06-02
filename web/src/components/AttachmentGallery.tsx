@@ -67,7 +67,7 @@ export function AttachmentGallery({ emails }: AttachmentGalleryProps) {
 
   // Sort by date (newest first)
   filteredAttachments.sort(
-    (a, b) => new Date(b.email.date).getTime() - new Date(a.email.date).getTime()
+    (a, b) => (b.email.date?.getTime() ?? -Infinity) - (a.email.date?.getTime() ?? -Infinity)
   );
 
   // Stable, content-based key of the image emails currently visible. Using a

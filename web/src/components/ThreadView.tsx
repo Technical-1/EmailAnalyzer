@@ -174,7 +174,7 @@ function SingleEmailView({ email, onClick, onToggleStar }: SingleEmailViewProps)
 
         <div className="flex-shrink-0 flex flex-col items-end gap-2">
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            {format(new Date(email.date), 'MMM d')}
+            {email.date ? format(email.date, 'MMM d') : 'Unknown date'}
           </span>
           <button
             onClick={(e) => {
@@ -239,7 +239,7 @@ function ThreadEmailItem({ email, onClick, onToggleStar, expanded }: ThreadEmail
               {email.senderName || email.sender}
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400">
-              {format(new Date(email.date), 'MMM d, h:mm a')}
+              {email.date ? format(email.date, 'MMM d, h:mm a') : 'Unknown date'}
             </span>
             {email.isStarred && (
               <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />

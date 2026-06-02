@@ -115,7 +115,7 @@ export function AccountsPage() {
                     </div>
                     <div className="text-sm text-slate-500 dark:text-slate-400 space-y-1">
                       <p>
-                        Signed up: {format(account.signupDate, 'MMM d, yyyy')}
+                        Signed up: {account.signupDate ? format(account.signupDate, 'MMM d, yyyy') : 'Unknown date'}
                       </p>
                       <p>
                         {account.emailCount} email{account.emailCount !== 1 ? 's' : ''} from this service

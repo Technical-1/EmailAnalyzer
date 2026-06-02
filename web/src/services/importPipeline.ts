@@ -79,20 +79,23 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
 
   // Purchases
   const purchaseResult = purchaseDetector.detect(email);
-  if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount) {
+  // Purchases require a concrete date (Purchase.purchaseDate is non-nullable and
+  // the dedup window keys off it). Undated emails are skipped for purchase records.
+  if (purchaseResult.type === 'purchase' && purchaseResult.data?.amount && email.date) {
+    const purchaseDate = email.date;
     const merchant = purchaseResult.data.merchant || 'Unknown';
     const amount = purchaseResult.data.amount;
     const orderNumber = purchaseResult.data.orderNumber;
     const currency = purchaseResult.data.currency;
 
-    const existingPurchase = await findDuplicatePurchase(merchant, amount, email.date, orderNumber);
+    const existingPurchase = await findDuplicatePurchase(merchant, amount, purchaseDate, orderNumber);
     if (!existingPurchase) {
       await insertPurchase({
         emailId: email.id,
         merchant,
         amount,
         currency: currency || 'USD',
-        purchaseDate: email.date,
+        purchaseDate,
         orderNumber,
         items: [],
         category: purchaseDetector.getCategory(merchant),
@@ -113,7 +116,7 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
 
     if (existingSub) {
       const emailIds = [...new Set([...existingSub.emailIds, email.id!])];
-      const isNewerEmail = email.date > existingSub.lastRenewalDate;
+      const isNewerEmail = !!email.date && (!existingSub.lastRenewalDate || email.date > existingSub.lastRenewalDate);
       const shouldUpdateAmount = isNewerEmail && subResult.amount != null && subResult.amount > 0;
 
       await updateSubscription(existingSub.id!, {
@@ -145,7 +148,7 @@ export async function runDetection(email: Email, counts: OLMProcessingResult): P
     if (existingNL) {
       await updateNewsletter(existingNL.id!, {
         emailCount: existingNL.emailCount + 1,
-        lastEmailDate: email.date > existingNL.lastEmailDate ? email.date : existingNL.lastEmailDate,
+        lastEmailDate: email.date && (!existingNL.lastEmailDate || email.date > existingNL.lastEmailDate) ? email.date : existingNL.lastEmailDate,
         unsubscribeLink: nlResult.unsubscribeLink || existingNL.unsubscribeLink,
       });
     } else {
@@ -230,7 +233,7 @@ export async function processEmailBatch(
   if (batch.length === 0) return;
 
   // Worker messages may serialize dates to strings; coerce defensively.
-  const emails = batch.map((e) => ({ ...e, date: new Date(e.date) }));
+  const emails = batch.map((e) => ({ ...e, date: e.date == null ? null : new Date(e.date) }));
   for (const e of emails) {
     if (e.folderId) folderIds.add(e.folderId);
   }

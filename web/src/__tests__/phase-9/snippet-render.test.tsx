@@ -45,13 +45,13 @@ describe('EmailCard snippet rendering', () => {
 
 const oneThread: EmailThread = {
   id: 't1', subject: 'T', emails: [{ ...base, snippet: 'THREAD SNIPPET' }],
-  participants: ['a@b.com'], lastMessageDate: base.date, firstMessageDate: base.date,
+  participants: ['a@b.com'], lastMessageDate: base.date!, firstMessageDate: base.date!,
   messageCount: 1, unreadCount: 1, hasAttachments: false, isStarred: false,
 };
 
 const oneThreadNoSnippet: EmailThread = {
   id: 't2', subject: 'T2', emails: [{ ...base, snippet: undefined }],
-  participants: ['a@b.com'], lastMessageDate: base.date, firstMessageDate: base.date,
+  participants: ['a@b.com'], lastMessageDate: base.date!, firstMessageDate: base.date!,
   messageCount: 1, unreadCount: 1, hasAttachments: false, isStarred: false,
 };
 
@@ -60,7 +60,7 @@ const multiThread: EmailThread = {
     { ...base, id: 2, snippet: 'OLDER SNIPPET', body: 'older body' },
     { ...base, id: 3, snippet: 'LATEST SNIPPET', body: 'latest body' },
   ],
-  participants: ['a@b.com'], lastMessageDate: base.date, firstMessageDate: base.date,
+  participants: ['a@b.com'], lastMessageDate: base.date!, firstMessageDate: base.date!,
   messageCount: 2, unreadCount: 0, hasAttachments: false, isStarred: false,
 };
 

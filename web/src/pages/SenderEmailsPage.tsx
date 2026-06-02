@@ -117,7 +117,7 @@ export function SenderEmailsPage() {
     }
 
     // Sort by date descending
-    result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    result.sort((a, b) => (b.date?.getTime() ?? -Infinity) - (a.date?.getTime() ?? -Infinity));
 
     return result;
   }, [senderEmails, readFilter, folderFilter, typeFilter, searchQuery, searchTextMap]);
@@ -368,7 +368,7 @@ export function SenderEmailsPage() {
                       </span>
                     )}
                     <span className="text-xs text-slate-500 dark:text-slate-400">
-                      {format(email.date, 'MMM d, yyyy')}
+                      {email.date ? format(email.date, 'MMM d, yyyy') : 'Unknown date'}
                     </span>
                   </div>
                 </button>

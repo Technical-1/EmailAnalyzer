@@ -165,7 +165,7 @@ function EmailsPageContent({ folderParam, initialListMode }: { folderParam: stri
       let comparison = 0;
       switch (sortField) {
         case 'date':
-          comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+          comparison = (a.date?.getTime() ?? -Infinity) - (b.date?.getTime() ?? -Infinity);
           break;
         case 'sender':
           comparison = a.sender.localeCompare(b.sender);

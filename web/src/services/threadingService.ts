@@ -34,7 +34,7 @@ class ThreadingService {
     for (const [threadKey, threadEmails] of threadMap) {
       // Sort emails by date (oldest first for conversation view)
       const sortedEmails = [...threadEmails].sort(
-        (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+        (a, b) => (a.date?.getTime() ?? Infinity) - (b.date?.getTime() ?? Infinity)
       );
 
       const thread = this.createThread(threadKey, sortedEmails);
@@ -81,7 +81,16 @@ class ThreadingService {
    */
   private createThread(threadKey: string, emails: Email[]): EmailThread {
     const firstEmail = emails[0];
-    const lastEmail = emails[emails.length - 1];
+
+    // Thread message dates derive only from emails that actually have a date.
+    // Undated emails are ignored for the thread's first/last timestamps; if no
+    // email in the thread has a date, fall back to the epoch (sorts last/oldest).
+    const validDates = emails
+      .map(e => e.date)
+      .filter((d): d is Date => d != null)
+      .map(d => d.getTime());
+    const firstMessageDate = validDates.length ? new Date(Math.min(...validDates)) : new Date(0);
+    const lastMessageDate = validDates.length ? new Date(Math.max(...validDates)) : new Date(0);
 
     // Collect all unique participants
     const participants = new Set<string>();
@@ -111,8 +120,8 @@ class ThreadingService {
       subject: firstEmail.subject,
       emails,
       participants: Array.from(participants),
-      firstMessageDate: new Date(firstEmail.date),
-      lastMessageDate: new Date(lastEmail.date),
+      firstMessageDate,
+      lastMessageDate,
       messageCount: emails.length,
       unreadCount,
       hasAttachments,
@@ -144,7 +153,7 @@ class ThreadingService {
     }
 
     const sortedEmails = [...threadEmails].sort(
-      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
+      (a, b) => (a.date?.getTime() ?? Infinity) - (b.date?.getTime() ?? Infinity)
     );
 
     return this.createThread(threadKey, sortedEmails);

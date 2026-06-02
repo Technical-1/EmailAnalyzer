@@ -200,7 +200,7 @@ export function NewslettersPage() {
                   {nl.emailCount} emails
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  Last: {format(nl.lastEmailDate, 'MMM d')}
+                  Last: {nl.lastEmailDate ? format(nl.lastEmailDate, 'MMM d') : 'Unknown date'}
                 </div>
               </div>
               {nl.unsubscribeLink && (

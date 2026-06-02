@@ -303,8 +303,9 @@ export function filterEmails(emails: Email[], search: ParsedSearch, bodyMatch?: 
       }
     }
 
-    // Date year filter
+    // Date year filter — undated emails can't satisfy any date filter, so exclude them.
     if (search.dateYear) {
+      if (!email.date) return false;
       const emailYear = new Date(email.date).getFullYear();
       if (emailYear !== search.dateYear) {
         return false;
@@ -313,6 +314,7 @@ export function filterEmails(emails: Email[], search: ParsedSearch, bodyMatch?: 
 
     // Date range filters
     if (search.dateFrom) {
+      if (!email.date) return false;
       const emailDate = new Date(email.date);
       emailDate.setHours(0, 0, 0, 0);
       const fromDate = new Date(search.dateFrom);
@@ -323,6 +325,7 @@ export function filterEmails(emails: Email[], search: ParsedSearch, bodyMatch?: 
     }
 
     if (search.dateTo) {
+      if (!email.date) return false;
       const emailDate = new Date(email.date);
       emailDate.setHours(23, 59, 59, 999);
       const toDate = new Date(search.dateTo);

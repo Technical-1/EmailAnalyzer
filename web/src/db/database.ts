@@ -17,15 +17,15 @@ const SYSTEM_FOLDER_IDS: Set<string> = new Set(Object.values(SYSTEM_FOLDERS));
 // body/htmlBody are optional post-split (absent on header rows after version(5) migration)
 export interface DBEmail extends Omit<Email, 'date' | 'body' | 'htmlBody'> {
   id: number;
-  date: number;
+  date: number | null;
   body?: string;
   htmlBody?: string;
 }
 
 export interface DBAccount extends Omit<Account, 'signupDate' | 'lastActivityDate'> {
   id: number;
-  signupDate: number;
-  lastActivityDate?: number;
+  signupDate: number | null;
+  lastActivityDate?: number | null;
 }
 
 export interface DBPurchase extends Omit<Purchase, 'purchaseDate'> {
@@ -35,7 +35,7 @@ export interface DBPurchase extends Omit<Purchase, 'purchaseDate'> {
 
 export interface DBContact extends Omit<Contact, 'lastEmailDate'> {
   id: number;
-  lastEmailDate: number;
+  lastEmailDate: number | null;
 }
 
 export interface DBCalendarEvent extends Omit<CalendarEvent, 'startDate' | 'endDate'> {
@@ -50,13 +50,13 @@ export interface DBFolder extends Omit<Folder, 'createdAt'> {
 
 export interface DBSubscription extends Omit<Subscription, 'lastRenewalDate' | 'nextRenewalDate'> {
   id: number;
-  lastRenewalDate: number;
+  lastRenewalDate: number | null;
   nextRenewalDate?: number;
 }
 
 export interface DBNewsletter extends Omit<Newsletter, 'lastEmailDate'> {
   id: number;
-  lastEmailDate: number;
+  lastEmailDate: number | null;
 }
 
 // Database class
@@ -202,7 +202,7 @@ export const insertEmail = async (email: Omit<Email, 'id'>): Promise<number> => 
     const id = await db.emails.add({
       ...rest,
       attachments: slimAttachments,
-      date: email.date.getTime(),
+      date: email.date ? email.date.getTime() : null,
       searchText,
     } as unknown as DBEmail);
     await db.emailBodies.put({
@@ -269,7 +269,7 @@ export const deleteEmails = async (ids: number[]): Promise<void> => {
 
 const dbEmailToEmail = (dbEmail: DBEmail): Email => ({
   ...dbEmail,
-  date: new Date(dbEmail.date),
+  date: dbEmail.date == null ? null : new Date(dbEmail.date),
   // Post-split: body/htmlBody are absent from header rows; provide empty-string fallback
   // so the Email type contract (body: string) is satisfied. Callers needing real body
   // must use getEmailBody() instead.
@@ -292,7 +292,7 @@ export const bulkInsertEmails = async (emails: Omit<Email, 'id'>[]): Promise<num
         return meta as typeof att;
       });
       const searchText = makeSearchText(body, htmlBody);
-      slimRows.push({ ...rest, attachments: slimAttachments, date: email.date.getTime(), searchText } as unknown as DBEmail);
+      slimRows.push({ ...rest, attachments: slimAttachments, date: email.date ? email.date.getTime() : null, searchText } as unknown as DBEmail);
       bodyPayloads.push({ body: body ?? '', htmlBody, attachmentData: Object.keys(attachmentData).length ? attachmentData : undefined });
     }
     const ids = (await db.emails.bulkAdd(slimRows, { allKeys: true })) as number[];
@@ -393,8 +393,8 @@ export const getEmailBody = async (
 export const insertAccount = async (account: Omit<Account, 'id'>): Promise<number> => {
   return await db.accounts.add({
     ...account,
-    signupDate: account.signupDate.getTime(),
-    lastActivityDate: account.lastActivityDate?.getTime(),
+    signupDate: account.signupDate ? account.signupDate.getTime() : null,
+    lastActivityDate: account.lastActivityDate ? account.lastActivityDate.getTime() : null,
   } as DBAccount);
 };
 
@@ -410,8 +410,8 @@ export const getAccountByServiceName = async (serviceName: string): Promise<Acco
 
 const dbAccountToAccount = (dbAccount: DBAccount): Account => ({
   ...dbAccount,
-  signupDate: new Date(dbAccount.signupDate),
-  lastActivityDate: dbAccount.lastActivityDate ? new Date(dbAccount.lastActivityDate) : undefined,
+  signupDate: dbAccount.signupDate == null ? null : new Date(dbAccount.signupDate),
+  lastActivityDate: dbAccount.lastActivityDate == null ? null : new Date(dbAccount.lastActivityDate),
 });
 
 // ==================== PURCHASE OPERATIONS ====================
@@ -469,7 +469,7 @@ const dbPurchaseToPurchase = (dbPurchase: DBPurchase): Purchase => ({
 export const insertContact = async (contact: Omit<Contact, 'id'>): Promise<number> => {
   return await db.contacts.add({
     ...contact,
-    lastEmailDate: contact.lastEmailDate.getTime(),
+    lastEmailDate: contact.lastEmailDate ? contact.lastEmailDate.getTime() : null,
   } as DBContact);
 };
 
@@ -483,12 +483,12 @@ export const getContactByEmail = async (email: string): Promise<Contact | undefi
   return dbContact ? dbContactToContact(dbContact) : undefined;
 };
 
-export const updateContactEmailCount = async (email: string, count: number, lastDate: Date): Promise<void> => {
+export const updateContactEmailCount = async (email: string, count: number, lastDate: Date | null): Promise<void> => {
   const contact = await db.contacts.where('email').equals(email).first();
   if (contact) {
-    await db.contacts.update(contact.id, { 
-      emailCount: count, 
-      lastEmailDate: lastDate.getTime() 
+    await db.contacts.update(contact.id, {
+      emailCount: count,
+      lastEmailDate: lastDate ? lastDate.getTime() : null
     });
   }
 };
@@ -502,14 +502,14 @@ export const updateContact = async (
 
 const dbContactToContact = (dbContact: DBContact): Contact => ({
   ...dbContact,
-  lastEmailDate: new Date(dbContact.lastEmailDate),
+  lastEmailDate: dbContact.lastEmailDate == null ? null : new Date(dbContact.lastEmailDate),
 });
 
 // Bulk insert contacts for performance
 export const bulkInsertContacts = async (contacts: Omit<Contact, 'id'>[]): Promise<number[]> => {
   const dbContacts = contacts.map(contact => ({
     ...contact,
-    lastEmailDate: contact.lastEmailDate.getTime(),
+    lastEmailDate: contact.lastEmailDate ? contact.lastEmailDate.getTime() : null,
   })) as DBContact[];
   
   return await db.contacts.bulkAdd(dbContacts, { allKeys: true }) as number[];
@@ -661,7 +661,7 @@ export const initializeSystemFolders = async (): Promise<void> => {
 export const insertSubscription = async (subscription: Omit<Subscription, 'id'>): Promise<number> => {
   return await db.subscriptions.add({
     ...subscription,
-    lastRenewalDate: subscription.lastRenewalDate.getTime(),
+    lastRenewalDate: subscription.lastRenewalDate ? subscription.lastRenewalDate.getTime() : null,
     nextRenewalDate: subscription.nextRenewalDate?.getTime(),
   } as DBSubscription);
 };
@@ -699,7 +699,7 @@ export const updateSubscription = async (
 
 const dbSubscriptionToSubscription = (dbSub: DBSubscription): Subscription => ({
   ...dbSub,
-  lastRenewalDate: new Date(dbSub.lastRenewalDate),
+  lastRenewalDate: dbSub.lastRenewalDate == null ? null : new Date(dbSub.lastRenewalDate),
   nextRenewalDate: dbSub.nextRenewalDate ? new Date(dbSub.nextRenewalDate) : undefined,
 });
 
@@ -708,7 +708,7 @@ const dbSubscriptionToSubscription = (dbSub: DBSubscription): Subscription => ({
 export const insertNewsletter = async (newsletter: Omit<Newsletter, 'id'>): Promise<number> => {
   return await db.newsletters.add({
     ...newsletter,
-    lastEmailDate: newsletter.lastEmailDate.getTime(),
+    lastEmailDate: newsletter.lastEmailDate ? newsletter.lastEmailDate.getTime() : null,
   } as DBNewsletter);
 };
 
@@ -735,7 +735,7 @@ export const updateNewsletter = async (
 
 const dbNewsletterToNewsletter = (dbNL: DBNewsletter): Newsletter => ({
   ...dbNL,
-  lastEmailDate: new Date(dbNL.lastEmailDate),
+  lastEmailDate: dbNL.lastEmailDate == null ? null : new Date(dbNL.lastEmailDate),
 });
 
 // ==================== UTILITY OPERATIONS ====================

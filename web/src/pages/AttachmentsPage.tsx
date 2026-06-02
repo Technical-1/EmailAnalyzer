@@ -108,7 +108,7 @@ export function AttachmentsPage() {
         attachments.push({ ...attachment, email });
       }
     }
-    return attachments.sort((a, b) => b.email.date.getTime() - a.email.date.getTime());
+    return attachments.sort((a, b) => (b.email.date?.getTime() ?? -Infinity) - (a.email.date?.getTime() ?? -Infinity));
   }, [emails]);
 
   // Filter attachments
@@ -478,7 +478,7 @@ function ListAttachmentRow({ att, isSelected, bodyCache, fetchData, onSelect, on
           {att.filename}
         </div>
         <div className="text-sm text-slate-500 dark:text-slate-400 truncate">
-          From: {att.email.sender} • {format(att.email.date, 'MMM d, yyyy')}
+          From: {att.email.sender} • {att.email.date ? format(att.email.date, 'MMM d, yyyy') : 'Unknown date'}
         </div>
       </div>
       <div className="text-sm text-slate-500 dark:text-slate-400">
